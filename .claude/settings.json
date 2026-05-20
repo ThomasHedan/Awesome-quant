@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv sync*)",
+      "Bash(uv run pytest*)",
+      "Bash(uv run python*)",
+      "Bash(uv run streamlit*)",
+      "Bash(uv run ruff*)",
+      "Bash(uv run mypy*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git add*)",
+      "Bash(mkdir -p*)",
+      "Bash(ls*)",
+      "Bash(cat tests/*)",
+      "Bash(curl -s http://127.0.0.1:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Write(./.env)",
+      "Bash(pip install*)",
+      "Bash(rm -rf /*)"
+    ]
+  }
+}
