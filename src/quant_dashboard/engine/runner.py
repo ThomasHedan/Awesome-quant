@@ -81,6 +81,17 @@ class BacktestResult:
 # ---------------------------------------------------------------------------
 
 
+def periods_per_year(index: pd.DatetimeIndex) -> float:
+    """Annualization factor derived from the median bar spacing."""
+    if len(index) < 2:
+        raise EngineError("need at least two bars to compute periods_per_year")
+    deltas = index.to_series().diff().dropna()
+    median_seconds = float(deltas.median().total_seconds())
+    if median_seconds <= 0:
+        raise EngineError("non-positive median bar spacing")
+    return 365.25 * 86_400.0 / median_seconds
+
+
 def _infer_freq(index: pd.DatetimeIndex) -> str:
     """Return a vectorbt-compatible frequency string from the index spacing.
 

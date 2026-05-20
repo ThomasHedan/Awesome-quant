@@ -30,9 +30,12 @@ The four pillars:
 - [x] Step 3 — `Strategy` ABC + reference strategies (SMA cross, RSI mean
       reversion) + registry + no-look-ahead test
 - [x] Step 4 — engine runner + metrics (vectorbt + QuantStats tearsheet)
-- [ ] Step 5 — benchmark module
-- [ ] Step 6 — Monte Carlo module
-- [ ] Step 7 — optimizer
+- [x] Step 5 — benchmark module (alpha / beta / IR / correlation + relative
+      equity, defaults to buy-and-hold on the same instrument)
+- [x] Step 6 — Monte Carlo (bootstrap + trade-shuffle, ruin / goal
+      probabilities, CI fan chart, percentile rank of realized result)
+- [x] Step 7 — optimizer (vbt exhaustive grid search, 2-D heatmaps,
+      neighborhood parameter-stability scoring, large-grid guardrail)
 - [ ] Step 8 — SQLite persistence
 - [ ] Step 9 — Streamlit dashboard
 - [ ] Step 10 — final docs
