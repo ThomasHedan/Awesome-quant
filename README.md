@@ -27,8 +27,9 @@ The four pillars:
 - [x] Step 1 — project scaffold + vectorbt/quantstats smoke test
 - [x] Step 2 — `DataSource` ABC + `InstrumentSpec` + adapters (yfinance,
       Alpaca, CCXT, Databento, IBKR, CSV/Parquet) + parquet cache + tests
-- [ ] Step 3 — `Strategy` ABC + reference strategies + no-look-ahead tests
-- [ ] Step 4 — engine runner + metrics
+- [x] Step 3 — `Strategy` ABC + reference strategies (SMA cross, RSI mean
+      reversion) + registry + no-look-ahead test
+- [x] Step 4 — engine runner + metrics (vectorbt + QuantStats tearsheet)
 - [ ] Step 5 — benchmark module
 - [ ] Step 6 — Monte Carlo module
 - [ ] Step 7 — optimizer
@@ -84,13 +85,38 @@ close, volume`. `timestamp` parsed as UTC.
 
 ## Adding a strategy
 
-(Step 3 — coming next.)
+1. Subclass `quant_dashboard.strategies.base.Strategy`.
+2. Set a unique `name` class attribute and a one-line `description`.
+3. Implement `param_specs()` returning a list of `ParamSpec` (the dashboard
+   reads these to build the UI and the optimizer reads them to build the
+   grid).
+4. Implement `_compute_signals(data, **params) -> Signals`. Signals are
+   aligned to the *decision bar* — the engine shifts them by one bar before
+   submitting to vectorbt, so don't shift inside the strategy.
+5. Decorate the class with `@register` (from `quant_dashboard.strategies`).
+
+The bundled `SMACross` and `RSIMeanReversion` are short reference
+implementations to copy from.
 
 ## Adding a data source
 
-Subclass `quant_dashboard.data.base.DataSource`, implement `fetch(...)`, and
-register the adapter in `quant_dashboard.data.__init__`.
+Subclass `quant_dashboard.data.base.DataSource`, implement `_fetch_raw(...)`
+returning a raw OHLCV frame, override `instrument_spec(symbol)` to attach
+contract metadata, and add the class to `quant_dashboard.data.__init__`.
+`fetch()` (the public entry point) handles caching, normalization, slicing,
+and validation — adapters only deal with the vendor.
 
 ## Calibrating fees
 
-(Step 4 — coming next.)
+The engine uses fractional `fees` and `slippage` (fraction of trade
+notional) applied per fill. Defaults are conservative (5 bps / 5 bps).
+
+| Asset class | How to calibrate |
+|-------------|------------------|
+| Crypto      | Exchange's taker fee (e.g. Binance: `0.001` = 10 bps). |
+| Equities    | Broker commission + half-spread, expressed as a fraction of typical trade value (commission-free brokers: `slippage ≈ 0.0001`-`0.0005`). |
+| Futures     | `commission_per_contract / (typical_price * multiplier)`. E.g. ES at 5000 with $50 mult and $2.50 commission ≈ `2.50 / (5000*50) = 0.00001`. Slippage: `tick_value / (typical_price * multiplier)` per tick of slippage assumed. |
+
+Monte Carlo and optimization results are meaningless if fees aren't
+calibrated — always sanity-check that round-trip costs match what your
+broker actually charges before reading anything into the metrics.
