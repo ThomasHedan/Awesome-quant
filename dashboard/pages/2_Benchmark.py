@@ -5,7 +5,7 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard._shared import load_ohlcv, rerun_from_saved, run_picker
+from _shared import load_ohlcv, rerun_from_saved, run_picker
 from quant_dashboard.engine import (
     BenchmarkError,
     build_buy_and_hold_returns,

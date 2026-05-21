@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard._shared import DB_PATH, get_store
+from _shared import DB_PATH, get_store
 from quant_dashboard.strategies import available_strategies
 
 st.set_page_config(

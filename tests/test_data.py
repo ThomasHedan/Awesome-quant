@@ -135,7 +135,8 @@ def test_file_source_csv_roundtrip(tmp_path, cache_dir):
     bundle = src.fetch(str(csv), "1d", start="2024-01-01", end="2024-01-31")
     assert isinstance(bundle, OHLCV)
     assert bundle.spec.asset_class == AssetClass.EQUITY
-    assert bundle.spec.symbol == "spy"
+    assert bundle.spec.symbol == str(csv)
+    assert bundle.spec.meta["display_name"] == "spy"
     assert list(bundle.df.columns) == ["open", "high", "low", "close", "volume"]
     assert bundle.df.index.is_monotonic_increasing
 

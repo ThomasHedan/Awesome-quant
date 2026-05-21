@@ -72,8 +72,11 @@ class FileSource(DataSource):
         return df
 
     def instrument_spec(self, symbol: str) -> InstrumentSpec:
+        # Keep the full path as the symbol so a run can be replayed from disk
+        # via fetch(symbol, ...). Use Path(symbol).stem for display only.
         return InstrumentSpec(
-            symbol=Path(symbol).stem,
+            symbol=symbol,
             asset_class=self.default_asset_class,
+            meta={"display_name": Path(symbol).stem},
             **self._spec_overrides,
         )

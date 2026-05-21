@@ -6,7 +6,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard._shared import get_store, rerun_from_saved, run_picker
+from _shared import get_store, rerun_from_saved, run_picker
 from quant_dashboard.engine import MonteCarloError, run_monte_carlo
 
 st.set_page_config(page_title="Monte Carlo", layout="wide")

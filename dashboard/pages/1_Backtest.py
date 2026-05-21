@@ -8,7 +8,7 @@ from pathlib import Path
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard._shared import (
+from _shared import (
     costs_widget,
     data_source_picker,
     get_store,

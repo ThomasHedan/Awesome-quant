@@ -5,7 +5,7 @@ from __future__ import annotations
 import plotly.express as px
 import streamlit as st
 
-from dashboard._shared import (
+from _shared import (
     costs_widget,
     data_source_picker,
     get_store,
