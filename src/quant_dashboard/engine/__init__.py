@@ -21,6 +21,12 @@ from quant_dashboard.engine.optimizer import (
     parameter_stability,
     run_grid_search,
 )
+from quant_dashboard.engine.multicharter import (
+    InstrumentResult,
+    MultiChartError,
+    MultiChartResult,
+    run_multi_chart,
+)
 from quant_dashboard.engine.runner import (
     BacktestResult,
     CostsConfig,
@@ -51,5 +57,9 @@ __all__ = [
     "run_backtest",
     "run_grid_search",
     "run_monte_carlo",
+    "run_multi_chart",
     "tearsheet_html",
+    "InstrumentResult",
+    "MultiChartError",
+    "MultiChartResult",
 ]
