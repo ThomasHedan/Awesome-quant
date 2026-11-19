@@ -95,7 +95,7 @@ validation:
     generations: 15
     population_size: 100
   permutation:
-    n_runs: 19                  # smallest p-value is 1/(n_runs+1)
+    n_runs: 19                  # smallest p-value is 1/(n_runs+1); 0 skips the test
     # null = same GA budget as the main run, so the comparison is fair
     generations: null
     population_size: null
@@ -107,7 +107,8 @@ validation:
   montecarlo:
     n_sims: 1000
     confidence: 0.95
-  dsr_min: 0.95
+  dsr_min: 0.95                 # deflated Sharpe on train, given every tree tried so far
+  n_candidates: 30              # diverse top trees sent to validation
   n_finalists: 10
 
 prop_firm:

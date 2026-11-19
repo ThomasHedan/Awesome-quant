@@ -129,7 +129,7 @@ class FitnessConfig(_Strict):
 
 
 class WalkForwardConfig(_Strict):
-    n_windows: int = Field(4, ge=1)
+    n_windows: int = Field(4, ge=0)
     train_years: float = Field(3, gt=0)
     test_years: float = Field(1, gt=0)
     generations: int = Field(15, ge=1)
@@ -139,7 +139,7 @@ class WalkForwardConfig(_Strict):
 class PermutationConfig(_Strict):
     """GA budget per permuted run; ``None`` reuses the main GA budget (fair comparison)."""
 
-    n_runs: int = Field(19, ge=1)
+    n_runs: int = Field(19, ge=0)
     generations: int | None = Field(None, ge=1)
     population_size: int | None = Field(None, ge=10)
     significance: float = Field(0.05, gt=0, lt=1)
@@ -162,6 +162,7 @@ class ValidationConfig(_Strict):
     sensitivity: SensitivityConfig = SensitivityConfig()
     montecarlo: MonteCarloConfig = MonteCarloConfig()
     dsr_min: float = Field(0.95, gt=0, lt=1)
+    n_candidates: int = Field(30, ge=1)
     n_finalists: int = Field(10, ge=1)
 
 

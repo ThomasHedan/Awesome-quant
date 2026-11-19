@@ -114,14 +114,14 @@ def _fmt(value: Any) -> str:
 
 
 def render_report(data: ReportData, out_path: Path) -> Path:
-    """Render the report to ``out_path`` (Plotly loaded from its CDN)."""
+    """Render the report to ``out_path`` (Plotly embedded, the file works offline)."""
     env = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
     env.filters["fmt"] = _fmt
     figures = [equity_figure(data.trades), pair_figure(data.per_pair), distribution_figure(data.trades)] if not data.trades.empty else []
     first = True
     charts = []
     for fig in figures:
-        charts.append(fig.to_html(full_html=False, include_plotlyjs="cdn" if first else False, config={"displaylogo": False}))
+        charts.append(fig.to_html(full_html=False, include_plotlyjs=True if first else False, config={"displaylogo": False}))
         first = False
     metric_keys = ["n_trades", "trades_per_year", "sharpe", "profit_factor", "win_rate", "expectancy_r",
                    "total_r", "return_pct", "max_dd_pct", "worst_day_pct", "avg_bars_held", "long_share"]

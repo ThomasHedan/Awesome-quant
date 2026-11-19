@@ -1,0 +1,37 @@
+# Fast end-to-end demo on the synthetic dataset (a few minutes on a laptop).
+# Same rules as default.yaml, smaller budgets. Do not use these budgets for real research:
+# 4 permutation runs cannot reach a 5% significance, hence the relaxed threshold.
+seed: 42
+
+data:
+  directory: data/synthetic
+  pairs: [EURUSD, GBPUSD, USDJPY, USDCHF, AUDUSD, NZDUSD, USDCAD, EURGBP, EURJPY, GBPJPY, AUDJPY, EURCHF]
+  execution_timeframe: H1
+  context_timeframes: [H4, D1]
+
+splits:
+  train_start: "2016-01-01"
+  validation_start: "2021-01-01"
+  holdout_start: "2023-01-01"
+  end: "2024-12-31"
+
+costs:
+  commission_pips_round_turn: 0.7
+  default_spread_pips: 1.5
+  spread_pips: {EURUSD: 0.3, GBPUSD: 0.6, USDJPY: 0.4, USDCHF: 0.8, AUDUSD: 0.5, NZDUSD: 0.9,
+                USDCAD: 0.8, EURGBP: 0.8, EURJPY: 0.9, GBPJPY: 1.8, AUDJPY: 1.0, EURCHF: 1.2}
+
+ga:
+  population_size: 120
+  generations: 12
+
+validation:
+  walkforward: {n_windows: 3, train_years: 3, test_years: 1, generations: 6, population_size: 60}
+  permutation: {n_runs: 4, significance: 0.2}   # same GA budget as the main run
+  montecarlo: {n_sims: 500}
+  n_candidates: 15
+  n_finalists: 5
+
+storage:
+  database: output/demo.db
+  output_dir: output/demo
