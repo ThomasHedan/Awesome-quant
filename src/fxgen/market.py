@@ -44,10 +44,12 @@ def build_pair_frame(
     context_tfs: list[str],
     atr_period: int = 14,
     state_kinds: dict[str, list[str]] | None = None,
+    atr_timeframe: str | None = None,
 ) -> PairFrame:
     """Compute all features for one pair and align them to the execution bars.
 
-    ``state_kinds`` maps a feature column (``"H4.rsi14"``) to the rising/cross
+    ``atr_timeframe`` selects the ATR used to size stops and targets (closed
+    bars only when it is a context timeframe). ``state_kinds`` maps a feature column (``"H4.rsi14"``) to the rising/cross
     kinds to precompute; by default every feature gets ``rising`` and crossing
     features also get ``cross_up``/``cross_down``.
     """
@@ -80,11 +82,15 @@ def build_pair_frame(
         state_cols[f"{execution_tf}.cal:{rule.name}"] = pd.Series(
             rule.evaluate(decision_times).astype("float32"), index=exec_df.index
         )
+    atr_tf = atr_timeframe or execution_tf
+    exit_atr = core.atr(data.frames[atr_tf], atr_period)
+    if atr_tf != execution_tf:
+        exit_atr = align_to_execution(exit_atr.to_frame("atr"), atr_tf, exec_df.index, execution_tf)["atr"]
     return PairFrame(
         pair=data.pair,
         execution_tf=execution_tf,
         ohlc=exec_df[["open", "high", "low", "close"]],
-        atr=core.atr(exec_df, atr_period),
+        atr=exit_atr,
         features=pd.concat(feature_cols, axis=1),
         states=pd.DataFrame(state_cols, index=exec_df.index),
     )

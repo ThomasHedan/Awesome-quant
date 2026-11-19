@@ -38,10 +38,12 @@ tree:
   min_depth: 1
 
 backtest:
-  stop_atr: 2.0
+  # Stops and targets are multiples of the ATR of atr_timeframe (D1 suits swing trading).
+  atr_timeframe: D1
+  stop_atr: 1.5
   take_profit_atr: 3.0          # null to disable
-  max_holding_bars: 120         # time exit, null to disable
-  exit_on_leaf_change: true
+  max_holding_bars: 240         # time exit in execution bars (240 H1 = ~2 weeks), null to disable
+  exit_on_leaf_change: false     # true = also exit when the active branch changes
   atr_period: 14
   risk_per_trade_pct: 0.5       # used for equity curves and prop-firm checks
 
@@ -79,6 +81,7 @@ ga:
 fitness:
   min_trades_total: 150
   min_trades_per_pair: 10
+  max_trades_per_pair_year: 100  # swing trading: above this the tree is rejected (null to disable)
   complexity_penalty: 0.02      # per node
   max_pair_pnl_share: 0.4       # above this, the result depends on one pair
   n_subperiods: 4
@@ -92,9 +95,10 @@ validation:
     generations: 15
     population_size: 100
   permutation:
-    n_runs: 10
-    generations: 10
-    population_size: 100
+    n_runs: 19                  # smallest p-value is 1/(n_runs+1)
+    # null = same GA budget as the main run, so the comparison is fair
+    generations: null
+    population_size: null
     significance: 0.05
   sensitivity:
     percentile_shift: 5
@@ -109,6 +113,8 @@ validation:
 prop_firm:
   max_total_drawdown_pct: 10.0
   max_daily_loss_pct: 5.0
+  # Monte Carlo check: the 95% drawdown must stay under the limit at this risk per trade.
+  min_risk_per_trade_pct: 0.25
 
 storage:
   database: output/fxgen.db

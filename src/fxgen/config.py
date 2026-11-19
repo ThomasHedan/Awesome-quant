@@ -87,11 +87,12 @@ class TreeConfig(_Strict):
 
 
 class BacktestConfig(_Strict):
-    stop_atr: float = Field(2.0, gt=0)
+    stop_atr: float = Field(1.5, gt=0)
     take_profit_atr: float | None = Field(3.0, gt=0)
-    max_holding_bars: int | None = Field(120, gt=0)
-    exit_on_leaf_change: bool = True
+    max_holding_bars: int | None = Field(240, gt=0)
+    exit_on_leaf_change: bool = False
     atr_period: int = Field(14, ge=2)
+    atr_timeframe: Timeframe = "D1"
     risk_per_trade_pct: float = Field(0.5, gt=0, le=5)
 
 
@@ -120,6 +121,7 @@ class GAConfig(_Strict):
 class FitnessConfig(_Strict):
     min_trades_total: int = Field(150, ge=1)
     min_trades_per_pair: int = Field(10, ge=0)
+    max_trades_per_pair_year: float | None = Field(100, gt=0)
     complexity_penalty: float = Field(0.02, ge=0)
     max_pair_pnl_share: float = Field(0.4, gt=0, le=1)
     n_subperiods: int = Field(4, ge=1)
@@ -135,9 +137,11 @@ class WalkForwardConfig(_Strict):
 
 
 class PermutationConfig(_Strict):
-    n_runs: int = Field(10, ge=1)
-    generations: int = Field(10, ge=1)
-    population_size: int = Field(100, ge=10)
+    """GA budget per permuted run; ``None`` reuses the main GA budget (fair comparison)."""
+
+    n_runs: int = Field(19, ge=1)
+    generations: int | None = Field(None, ge=1)
+    population_size: int | None = Field(None, ge=10)
     significance: float = Field(0.05, gt=0, lt=1)
 
 
@@ -164,6 +168,7 @@ class ValidationConfig(_Strict):
 class PropFirmConfig(_Strict):
     max_total_drawdown_pct: float = Field(10.0, gt=0)
     max_daily_loss_pct: float = Field(5.0, gt=0)
+    min_risk_per_trade_pct: float = Field(0.25, gt=0)
 
 
 class StorageConfig(_Strict):

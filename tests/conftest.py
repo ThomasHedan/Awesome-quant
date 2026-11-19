@@ -7,6 +7,7 @@ import pytest
 
 from fxgen.config import Config, load_config
 from fxgen.data.synthetic import write_universe
+from fxgen.workspace import Workspace, build_workspace
 
 SMALL_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]
 
@@ -45,6 +46,16 @@ def synthetic_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 @pytest.fixture
 def cfg(synthetic_dir: Path, tmp_path: Path) -> Config:
     return make_config(synthetic_dir, tmp_path / "fxgen.db")
+
+
+@pytest.fixture(scope="session")
+def session_cfg(synthetic_dir: Path, tmp_path_factory: pytest.TempPathFactory) -> Config:
+    return make_config(synthetic_dir, tmp_path_factory.mktemp("db") / "fxgen.db")
+
+
+@pytest.fixture(scope="session")
+def ws(session_cfg: Config) -> Workspace:
+    return build_workspace(session_cfg)
 
 
 def hourly_frame(n: int = 200, start: str = "2020-01-06 00:00") -> pd.DataFrame:

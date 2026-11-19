@@ -10,7 +10,8 @@ from fxgen.config import Config, DataConfig
 from fxgen.data.loader import discover_datasets, load_csv, load_pair
 from fxgen.data.mtf import align_to_execution
 from fxgen.data.splits import split_period, subperiods, walkforward_windows
-from fxgen.data.synthetic import generate_universe, resample
+from fxgen.data.resample import resample
+from fxgen.data.synthetic import generate_universe
 from fxgen.data.validation import count_gaps
 from fxgen.errors import DataError, HoldoutLockedError
 

@@ -5,8 +5,8 @@ common currency factors (so pairs are correlated), intraday session seasonality
 and the FX weekend close. 15-minute steps are aggregated into H1 bars, then H1
 is resampled into H4 and D1 using the 22:00 UTC daily roll.
 
-``edge`` plants a weak, deliberate time-series momentum effect: the drift of
-each hour is ``edge * sigma * sign(return over the previous 24 hours)``. With
+``edge`` plants a weak, deliberate swing-horizon momentum effect: the drift of
+each hour is ``edge * sigma * sign(return over the previous edge_window hours)``. With
 ``edge=0`` the data is pure noise and no strategy should pass validation.
 """
 
@@ -18,6 +18,8 @@ from pathlib import Path
 import numba
 import numpy as np
 import pandas as pd
+
+from fxgen.data.resample import resample
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +48,11 @@ def _session_multiplier(hours: pd.DatetimeIndex) -> np.ndarray:
 
 
 @numba.njit(cache=True)
-def _simulate(shocks: np.ndarray, session: np.ndarray, base_vol: float, edge: float) -> np.ndarray:
+def _simulate(shocks: np.ndarray, session: np.ndarray, base_vol: float, edge: float, window: int) -> np.ndarray:
     n = shocks.shape[0]
     omega, alpha, beta = 0.05, 0.06, 0.89
     var = 1.0
     out = np.empty(n)
-    window = 24
     running = 0.0
     for t in range(n):
         sigma = base_vol * session[t] * np.sqrt(var)
@@ -99,21 +100,13 @@ def _hourly_to_bars(
     )
 
 
-def resample(h1: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-    """Resample H1 bars into H4 or D1 aligned on the 22:00 UTC daily roll."""
-    rule = {"H4": "4h", "D1": "24h"}[timeframe]
-    out = h1.resample(rule, origin="epoch", offset="22h", label="left", closed="left").agg(
-        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
-    )
-    return out.dropna(subset=["open"])
-
-
 def generate_universe(
     start: str = "2016-01-03",
     end: str = "2025-01-01",
     pairs: dict[str, float] | None = None,
-    edge: float = 0.01,
+    edge: float = 0.02,
     seed: int = 42,
+    edge_window: int = 120,
 ) -> dict[str, dict[str, pd.DataFrame]]:
     """Simulate H1/H4/D1 bars for every pair. Returns ``{pair: {tf: frame}}``."""
     pairs = pairs or DEFAULT_PAIRS
@@ -125,7 +118,7 @@ def generate_universe(
     universe: dict[str, dict[str, pd.DataFrame]] = {}
     for pair, price in pairs.items():
         shocks = _pair_shocks(pair, factors, rng)
-        returns = _simulate(shocks, session, base_vol, edge)
+        returns = _simulate(shocks, session, base_vol, edge, edge_window)
         h1 = _hourly_to_bars(returns, hours, price, base_vol * 0.5, rng)
         universe[pair] = {"H1": h1, "H4": resample(h1, "H4"), "D1": resample(h1, "D1")}
     return universe
@@ -135,7 +128,7 @@ def write_universe(
     directory: str | Path,
     start: str = "2016-01-03",
     end: str = "2025-01-01",
-    edge: float = 0.01,
+    edge: float = 0.02,
     seed: int = 42,
     file_pattern: str = "{pair}_{timeframe}.csv",
 ) -> list[Path]:

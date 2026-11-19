@@ -10,7 +10,8 @@
 * ``period_stability``: 1 when at least ``min_positive_subperiods`` of the
   ``n_subperiods`` train slices are positive, scaled down otherwise.
 
-Too few trades in total or on any pair gives a fitness of exactly 0.
+Too few trades in total or on any pair, or more than
+``max_trades_per_pair_year`` on average (not swing trading), gives exactly 0.
 """
 
 from __future__ import annotations
@@ -65,6 +66,12 @@ def compute_fitness(tree: Tree, result: BacktestResult, period: Period, cfg: Fit
         return FitnessResult(0.0, portfolio_sharpe, False, reason=f"{len(trades)} trades < {cfg.min_trades_total}")
     if min(counts, default=0) < cfg.min_trades_per_pair:
         return FitnessResult(0.0, portfolio_sharpe, False, reason=f"a pair has {min(counts)} trades < {cfg.min_trades_per_pair}")
+
+    if cfg.max_trades_per_pair_year is not None and counts:
+        years = max((period.end - period.start).days / 365.25, 1e-9)
+        per_year = len(trades) / len(counts) / years
+        if per_year > cfg.max_trades_per_pair_year:
+            return FitnessResult(0.0, portfolio_sharpe, False, reason=f"{per_year:.0f} trades/pair/year > {cfg.max_trades_per_pair_year:g}")
 
     totals = pair_totals(result)
     pair_stability = float(np.mean([v > 0 for v in totals.values()]))

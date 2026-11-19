@@ -81,7 +81,12 @@ class Workspace:
 def build_frames(cfg: Config, universe: dict[str, PairData], features: list[Feature]) -> dict[str, PairFrame]:
     return {
         pair: build_pair_frame(
-            data, features, cfg.data.execution_timeframe, cfg.data.context_timeframes, cfg.backtest.atr_period
+            data,
+            features,
+            cfg.data.execution_timeframe,
+            cfg.data.context_timeframes,
+            cfg.backtest.atr_period,
+            atr_timeframe=cfg.backtest.atr_timeframe,
         )
         for pair, data in universe.items()
     }
