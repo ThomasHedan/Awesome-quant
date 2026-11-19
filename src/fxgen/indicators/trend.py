@@ -64,7 +64,7 @@ def _adx(length: int) -> Feature:
         family="trend",
         label=f"ADX({length})",
         compute=lambda df: core.dmi(df, length)[2],
-        pine=f"ta.dmi({length}, {length})[2]",
+        pine=f"[_diPlus, _diMinus, _adx] = ta.dmi({length}, {length})\n_adx",
     )
 
 
@@ -78,7 +78,7 @@ def _di_diff(length: int) -> Feature:
         family="trend",
         label=f"+DI({length}) - -DI({length})",
         compute=compute,
-        pine=f"ta.dmi({length}, {length})[0] - ta.dmi({length}, {length})[1]",
+        pine=f"[_diPlus, _diMinus, _adx] = ta.dmi({length}, {length})\n_diPlus - _diMinus",
         signed=True,
         crosses=True,
     )
@@ -94,7 +94,7 @@ def _macd_hist() -> Feature:
         family="trend",
         label="MACD(12,26,9) histogram / ATR14",
         compute=compute,
-        pine=f"ta.macd(close, 12, 26, 9)[2] / {_ATR}",
+        pine=f"[_macd, _signal, _hist] = ta.macd(close, 12, 26, 9)\n_hist / {_ATR}",
         signed=True,
         crosses=True,
     )
@@ -106,7 +106,7 @@ def _macd_line() -> Feature:
         family="trend",
         label="MACD(12,26) line / ATR14",
         compute=lambda df: (core.ema(df["close"], 12) - core.ema(df["close"], 26)) / core.atr(df, 14),
-        pine=f"ta.macd(close, 12, 26, 9)[0] / {_ATR}",
+        pine=f"[_macd, _signal, _hist] = ta.macd(close, 12, 26, 9)\n_macd / {_ATR}",
         signed=True,
     )
 

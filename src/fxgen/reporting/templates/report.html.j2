@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tree {{ d.tree_id }}</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb; --surface-2: #f3f2ef; --border: #e2e0da;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #7b7a74;
+  --good: #008300; --bad: #c92a2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1a1a19; --surface-2: #232321; --border: #3a3936;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #9a998f;
+    --good: #0ca30c; --bad: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19; --surface-2: #232321; --border: #3a3936;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #9a998f;
+  --good: #0ca30c; --bad: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.5 Inter, system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 32px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.sub { color: var(--text-2); margin: 0 0 16px; }
+pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-2); font-weight: 600; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; }
+.ok { color: var(--good); } .ko { color: var(--bad); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
+.chart { border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; padding: 4px; }
+details summary { cursor: pointer; color: var(--text-2); }
+</style>
+</head>
+<body>
+<main>
+<h1>Tree {{ d.tree_id }}</h1>
+<p class="sub">depth {{ d.depth }} &middot; {{ d.n_internal }} conditions{% if d.run_id %} &middot; run {{ d.run_id }}{% endif %}
+{% if d.robustness %} &middot;
+  {% if d.robustness.survives %}<span class="pill ok">survives robustness</span>{% else %}<span class="pill ko">fails robustness</span>{% endif %}
+{% endif %}</p>
+{% for n in d.notes %}<p class="sub">{{ n }}</p>{% endfor %}
+
+<h2>Rules</h2>
+<p class="sub">Evaluated at the close of each bar; orders fill at the next bar's open.</p>
+<pre>{{ d.rules }}</pre>
+<details><summary>JSON</summary><pre>{{ tree_json }}</pre></details>
+
+<h2>Performance by split</h2>
+<div class="scroll"><table>
+<tr><th>metric</th>{% for s in splits %}<th><span class="swatch" style="background: {{ colors[s] }}"></span>{{ s }}</th>{% endfor %}</tr>
+{% for k in metric_keys %}<tr><td>{{ k }}</td>{% for s in splits %}<td>{{ d.metrics[s][k] | fmt }}</td>{% endfor %}</tr>{% endfor %}
+</table></div>
+
+{% for chart in charts %}<div class="chart">{{ chart | safe }}</div>{% endfor %}
+
+<h2>Per pair (total R / trades)</h2>
+<div class="scroll"><table>
+<tr><th>pair</th>{% for s in splits %}<th>{{ s }} R</th><th>{{ s }} trades</th><th>{{ s }} Sharpe</th>{% endfor %}</tr>
+{% for p in pairs %}<tr><td>{{ p }}</td>{% for s in splits %}{% set m = d.per_pair.get(s, {}).get(p) %}
+<td>{{ (m.total_r if m else None) | fmt }}</td><td>{{ (m.n_trades if m else None) | fmt }}</td><td>{{ (m.sharpe if m else None) | fmt }}</td>{% endfor %}</tr>{% endfor %}
+</table></div>
+
+<h2>Per year</h2>
+<div class="scroll"><table>
+<tr><th>year</th><th>split</th><th>trades</th><th>total R</th><th>return %</th><th>win rate</th></tr>
+{% for r in per_year %}<tr><td>{{ r.year }}</td><td>{{ r.split }}</td><td>{{ r.n_trades | fmt }}</td><td>{{ r.total_r | fmt }}</td><td>{{ r.return_pct | fmt }}</td><td>{{ r.win_rate | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+{% if d.robustness %}{% set rb = d.robustness %}
+<h2>Robustness</h2>
+<div class="scroll"><table>
+<tr><th>check</th><th>result</th></tr>
+{% for k, v in rb.checks.items() %}<tr><td>{{ k }}</td><td>{% if v %}<span class="ok">pass</span>{% else %}<span class="ko">fail</span>{% endif %}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Deflated Sharpe</h2>
+<div class="scroll"><table>
+<tr><th>split</th><th>Sharpe</th><th>SR0 (expected max of noise)</th><th>DSR</th><th>trials</th><th>days</th></tr>
+{% for s, v in rb.dsr.items() %}<tr><td>{{ s }}</td><td>{{ v.sharpe_annual | fmt }}</td><td>{{ v.sr0_annual | fmt }}</td><td>{{ v.dsr | fmt }}</td><td>{{ v.n_trials | fmt }}</td><td>{{ v.n_obs | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Walk-forward (fixed tree, OOS windows)</h2>
+<div class="scroll"><table>
+<tr><th>OOS window</th><th>Sharpe</th><th>trades</th><th>total R</th></tr>
+{% for w in rb.walkforward.windows %}<tr><td>{{ w.oos }}</td><td>{{ w.sharpe | fmt }}</td><td>{{ w.n_trades | fmt }}</td><td>{{ w.total_r | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Sensitivity (validation Sharpe, base {{ rb.sensitivity.base_sharpe | fmt }})</h2>
+<div class="scroll"><table>
+<tr><th>variant</th><th>Sharpe</th></tr>
+{% for k, v in rb.sensitivity.variants.items() %}<tr><td>{{ k }}</td><td>{{ v | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Monte Carlo (trade order, train + validation)</h2>
+<div class="scroll"><table>
+<tr><th>measure</th><th>value</th></tr>
+{% for k, v in rb.montecarlo.items() %}<tr><td>{{ k }}</td><td>{{ v | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+{% if rb.permutation %}
+<h2>Permutation test</h2>
+<p>Real best fitness {{ rb.permutation.real_best | fmt }}; tree train fitness {{ rb.train_fitness | fmt }};
+p-value (tree) {{ rb.permutation.tree_p_value | fmt }}; run p-value {{ rb.permutation.p_value | fmt }}; z {{ rb.permutation.z_score | fmt }}.</p>
+<p class="sub">Best fitness on permuted data: {% for b in rb.permutation.permuted_best %}{{ b | fmt }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% endif %}
+{% endif %}
+</main>
+<script>
+(function () {
+  const dark = document.documentElement.dataset.theme === "dark" ||
+    (document.documentElement.dataset.theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  if (!dark || !window.Plotly) return;
+  document.querySelectorAll(".plotly-graph-div").forEach(function (el) {
+    Plotly.relayout(el, {"font.color": "#c3c2b7", "title.font.color": "#f0efec"});
+  });
+})();
+</script>
+</body>
+</html>

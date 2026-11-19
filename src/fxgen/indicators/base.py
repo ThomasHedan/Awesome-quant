@@ -21,6 +21,9 @@ FAMILIES: tuple[Family, ...] = ("trend", "momentum", "volatility", "structure", 
 class Feature:
     """A normalised indicator series.
 
+    ``pine`` is a Pine Script v6 function body: one expression, or several
+    lines whose last line is the returned value.
+
     ``signed`` means zero is a meaningful level (e.g. distance to a moving
     average), which enables the ``> 0`` and zero-cross conditions.
     """
