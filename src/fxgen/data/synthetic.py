@@ -112,7 +112,7 @@ def generate_universe(
     start: str = "2016-01-03",
     end: str = "2025-01-01",
     pairs: dict[str, float] | None = None,
-    edge: float = 0.03,
+    edge: float = 0.01,
     seed: int = 42,
 ) -> dict[str, dict[str, pd.DataFrame]]:
     """Simulate H1/H4/D1 bars for every pair. Returns ``{pair: {tf: frame}}``."""
@@ -135,7 +135,7 @@ def write_universe(
     directory: str | Path,
     start: str = "2016-01-03",
     end: str = "2025-01-01",
-    edge: float = 0.03,
+    edge: float = 0.01,
     seed: int = 42,
     file_pattern: str = "{pair}_{timeframe}.csv",
 ) -> list[Path]:
