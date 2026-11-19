@@ -1,0 +1,115 @@
+# fxgen configuration. All paths are relative to the project root.
+seed: 42
+
+data:
+  directory: data/synthetic
+  # File name pattern; {pair} and {timeframe} are substituted.
+  file_pattern: "{pair}_{timeframe}.csv"
+  columns:
+    time: time
+    open: open
+    high: high
+    low: low
+    close: close
+    volume: volume
+  # Timezone of the timestamps in the CSV files; converted to UTC on load.
+  source_timezone: UTC
+  # Timestamp convention of the CSV: "open" (bar labelled by its open time) or "close".
+  timestamp_label: open
+  pairs: [EURUSD, GBPUSD, USDJPY, USDCHF, AUDUSD, NZDUSD, USDCAD, EURGBP, EURJPY, GBPJPY, AUDJPY, EURCHF]
+  execution_timeframe: H1
+  context_timeframes: [H4, D1]
+
+splits:
+  train_start: "2016-01-01"
+  validation_start: "2021-01-01"
+  holdout_start: "2023-01-01"
+  end: "2024-12-31"
+
+conditions:
+  percentiles: [10, 25, 50, 75, 90]
+  normalization_window: 250
+  redundancy_threshold: 0.9
+  min_activation_rate: 0.03     # condition true on at least 3% of train bars
+  max_activation_rate: 0.97
+
+tree:
+  max_depth: 3
+  min_depth: 1
+
+backtest:
+  stop_atr: 2.0
+  take_profit_atr: 3.0          # null to disable
+  max_holding_bars: 120         # time exit, null to disable
+  exit_on_leaf_change: true
+  atr_period: 14
+  risk_per_trade_pct: 0.5       # used for equity curves and prop-firm checks
+
+# Prop-firm style costs (raw-spread account + commission). Spreads in pips.
+costs:
+  commission_pips_round_turn: 0.7
+  default_spread_pips: 1.5
+  spread_pips:
+    EURUSD: 0.3
+    GBPUSD: 0.6
+    USDJPY: 0.4
+    USDCHF: 0.8
+    AUDUSD: 0.5
+    NZDUSD: 0.9
+    USDCAD: 0.8
+    EURGBP: 0.8
+    EURJPY: 0.9
+    GBPJPY: 1.8
+    AUDJPY: 1.0
+    EURCHF: 1.2
+  # Approximate swap in pips per night held (negative = cost). Triple on Wednesday.
+  swap_pips_long: -0.5
+  swap_pips_short: -0.5
+
+ga:
+  population_size: 200
+  generations: 30
+  tournament_size: 4
+  crossover_prob: 0.7
+  mutation_prob: 0.3
+  elite_size: 5
+  sharing_radius: 0.8            # Jaccard similarity above which fitness is shared
+  n_jobs: -1
+
+fitness:
+  min_trades_total: 150
+  min_trades_per_pair: 10
+  complexity_penalty: 0.02      # per node
+  max_pair_pnl_share: 0.4       # above this, the result depends on one pair
+  n_subperiods: 4
+  min_positive_subperiods: 3
+
+validation:
+  walkforward:
+    n_windows: 4
+    train_years: 3
+    test_years: 1
+    generations: 15
+    population_size: 100
+  permutation:
+    n_runs: 10
+    generations: 10
+    population_size: 100
+    significance: 0.05
+  sensitivity:
+    percentile_shift: 5
+    exit_scale: [0.8, 1.2]
+    max_degradation: 0.5        # Sharpe must keep >= 50% of base
+  montecarlo:
+    n_sims: 1000
+    confidence: 0.95
+  dsr_min: 0.95
+  n_finalists: 10
+
+prop_firm:
+  max_total_drawdown_pct: 10.0
+  max_daily_loss_pct: 5.0
+
+storage:
+  database: output/fxgen.db
+  output_dir: output
