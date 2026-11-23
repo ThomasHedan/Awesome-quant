@@ -22,8 +22,8 @@ The priority is avoiding data-mining bias, not pretty backtests. See README.md f
 - `uv sync --extra dev`, `uv run pytest`. Do not `pip install`.
 - Errors: raise a subclass of `fxgen.errors.FxgenError` with a message that tells the user what to do.
 - Comments only for non-obvious *why*. No emojis.
-- New feature: add it to the family module in `indicators/` with a matching Pine v6 body, and keep the
-  look-ahead test green.
+- New feature: add it to the family module in `indicators/` with a matching Pine v6 body, keep the
+  look-ahead test green, and regenerate `docs/INDICATORS.md` (`uv run fxgen indicators > docs/INDICATORS.md`).
 - `mcp` is pinned `<2` because FastMCP was renamed in 2.x.
 
 ## Commands

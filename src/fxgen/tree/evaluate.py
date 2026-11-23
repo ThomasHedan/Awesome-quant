@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
-from fxgen.errors import TreeError
 from fxgen.tree.node import Leaf, Tree, leaves
 
 
@@ -12,12 +13,12 @@ def leaf_paths(tree: Tree) -> list[str]:
     return [path for path, _ in leaves(tree)]
 
 
-def evaluate(tree: Tree, X: np.ndarray, columns: dict[str, int]) -> tuple[np.ndarray, np.ndarray]:
+def evaluate(tree: Tree, column: Callable[[str], np.ndarray], n: int) -> tuple[np.ndarray, np.ndarray]:
     """Return per-bar ``(action, leaf_index)`` arrays at the decision bar.
 
+    ``column(cid)`` returns the boolean array of a condition (length ``n``).
     ``action`` is int8 in {-1, 0, 1}; ``leaf_index`` indexes ``leaf_paths(tree)``.
     """
-    n = X.shape[0]
     action = np.zeros(n, dtype=np.int8)
     leaf_idx = np.zeros(n, dtype=np.int16)
     counter = [0]
@@ -28,9 +29,7 @@ def evaluate(tree: Tree, X: np.ndarray, columns: dict[str, int]) -> tuple[np.nda
             leaf_idx[mask] = counter[0]
             counter[0] += 1
             return
-        if node.condition not in columns:
-            raise TreeError(f"condition {node.condition!r} is not in the condition matrix")
-        col = X[:, columns[node.condition]]
+        col = column(node.condition)
         walk(node.if_true, mask & col)
         walk(node.if_false, mask & ~col)
 

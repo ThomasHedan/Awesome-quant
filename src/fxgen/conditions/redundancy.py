@@ -40,15 +40,24 @@ def sample_matrix(
     return np.vstack(blocks)
 
 
-def correlation_matrix(X: np.ndarray) -> np.ndarray:
-    """Phi coefficient (Pearson on 0/1) between columns; constant columns get 0."""
-    Xf = X.astype(np.float32)
-    Xf -= Xf.mean(axis=0)
-    norms = np.sqrt((Xf**2).sum(axis=0))
-    norms[norms == 0] = np.inf
-    Xf /= norms
-    return Xf.T @ Xf
+def correlation_matrix(X: np.ndarray, chunk: int = 4096) -> np.ndarray:
+    """Phi coefficient (Pearson on 0/1) between columns; constant columns get 0.
 
+    Accumulated over row chunks so thousands of conditions fit in memory.
+    """
+    n, m = X.shape
+    cross = np.zeros((m, m), dtype=np.float32)
+    for start in range(0, n, chunk):
+        block = X[start : start + chunk].astype(np.float32)
+        cross += block.T @ block
+    p = X.mean(axis=0, dtype=np.float64).astype(np.float32)
+    std = np.sqrt(np.clip(p * (1 - p), 0, None))
+    std[std == 0] = np.inf
+    cross /= n
+    cross -= np.outer(p, p)
+    cross /= std[:, None]
+    cross /= std[None, :]
+    return cross
 
 def filter_conditions(
     frames: dict[str, PairFrame],

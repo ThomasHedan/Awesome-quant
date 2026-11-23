@@ -143,3 +143,74 @@ def test_redundancy_removes_duplicates_and_inactive(frames) -> None:  # type: ig
     assert len(kept & {"H1.linreg_slope20>0", "H1.linreg_slope20>p50"}) == 1
     assert "H1.rsi14>p50" in kept and "H1.cal:day_monday" in kept
     assert "H1.stoch14>p90" in report.dropped_inactive
+
+
+def test_weighted_moving_averages() -> None:
+    x = pd.Series(np.arange(1.0, 11.0))
+    assert core.wma(x, 3).iloc[-1] == pytest.approx((8 * 1 + 9 * 2 + 10 * 3) / 6)
+    assert np.isnan(core.wma(x, 3).iloc[1])
+    manual = core.wma(2 * core.wma(x, 2) - core.wma(x, 4), 2)
+    pd.testing.assert_series_equal(core.hma(x, 4), manual)
+    flat = pd.Series(np.full(20, 5.0))
+    assert core.alma(flat, 9).iloc[-1] == pytest.approx(5.0)
+    assert core.dema(flat, 5).iloc[-1] == pytest.approx(5.0) and core.tema(flat, 5).iloc[-1] == pytest.approx(5.0)
+    assert core.kama(flat).iloc[-1] == pytest.approx(5.0)
+
+
+def _trending(n: int = 200, slope: float = 0.001) -> pd.DataFrame:
+    close = pd.Series(1.0 + slope * np.arange(n) + 0.0002 * np.sin(np.arange(n)))
+    return pd.DataFrame({"open": close.shift(1).fillna(1.0), "high": close + 0.0005, "low": close - 0.0005,
+                         "close": close, "volume": 100.0})
+
+
+def test_trailing_stops_follow_the_trend() -> None:
+    up, down = _trending(), _trending(slope=-0.001)
+    assert (core.supertrend(up).iloc[50:] < up["close"].iloc[50:]).all()
+    assert (core.supertrend(down).iloc[50:] > down["close"].iloc[50:]).all()
+    assert (core.sar(up).iloc[50:] < up["low"].iloc[50:]).all()
+    assert (core.sar(down).iloc[50:] > down["high"].iloc[50:]).all()
+
+
+def test_streak_and_oscillator_bounds() -> None:
+    x = pd.Series([1.0, 2.0, 3.0, 2.0, 1.0, 1.0, 2.0])
+    assert core.streak(x).tolist() == [0, 1, 2, -1, -2, 0, 1]
+    df = _trending(300, 0.0)
+    df["close"] = df["close"] + np.random.default_rng(0).normal(0, 0.002, 300).cumsum()
+    df["high"], df["low"] = df["close"] + 0.001, df["close"] - 0.001
+    assert core.tsi(df["close"]).dropna().abs().max() <= 1
+    assert core.cmo(df["close"], 14).dropna().abs().max() <= 100
+    u = core.ultimate(df).dropna()
+    assert ((u >= 0) & (u <= 100)).all()
+    assert np.isfinite(core.fisher(df).dropna()).all()
+
+
+def test_level_cross_and_binary_conditions(frames) -> None:  # type: ignore[no-untyped-def]
+    cond = parse_condition_id("H4.rsi14:cross_down@70", FEATURES)
+    assert cond.kind == "cross_down" and cond.level == 70.0 and "crossed below 70" in cond.describe()
+    with pytest.raises(TreeError):
+        parse_condition_id("H4.rsi14:rising@70", FEATURES)
+    cands = {c.id for c in generate_candidates(FEATURES, ["H1"], [50])}
+    assert {"H1.rsi14>70", "H1.rsi14:cross_up@30", "H1.inside_bar>0.5", "H1.inside_bar:cross_up@0.5",
+            "H1.cal:month_end", "H1.cal:hour_london_open"} <= cands
+    assert "H1.inside_bar>p50" not in cands and "H1.inside_bar:rising" not in cands
+    frame = frames["EURUSD"]
+    rsi = frame.features["H1.rsi14"]
+    crossed = (rsi < 70) & (rsi.shift(1) >= 70)
+    state = frame.states["H1.rsi14:cross_down@70"]
+    assert state[crossed].all() and state.mean() < 0.2
+    assert 0.0 < frame.states["H1.cal:month_end"].mean() < 0.3
+
+
+def test_library_filters(cfg) -> None:  # type: ignore[no-untyped-def]
+    from fxgen.config import load_config
+    from fxgen.workspace import filter_candidates, select_features
+
+    narrow = load_config(overrides={**cfg.model_dump(mode="json"), "conditions": {
+        "families": ["momentum", "time"], "exclude_features": ["rsi*"], "exclude_conditions": ["*:cross_*"]}})
+    feats = select_features(narrow)
+    assert feats and all(f.family == "momentum" and not f.name.startswith("rsi") for f in feats)
+    cands = filter_candidates(narrow, generate_candidates(feats, ["H1"], [50]))
+    assert cands and all(":cross_" not in c.id for c in cands)
+    assert {c.family for c in cands} == {"momentum", "time"}
+    only = load_config(overrides={**cfg.model_dump(mode="json"), "conditions": {"include_conditions": ["D1.*"]}})
+    assert all(c.id.startswith("D1.") for c in filter_candidates(only, generate_candidates(FEATURES, ["H1", "D1"], [50])))

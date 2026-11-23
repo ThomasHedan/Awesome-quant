@@ -67,7 +67,13 @@ class SplitsConfig(_Strict):
 
 
 class ConditionsConfig(_Strict):
-    percentiles: list[int] = Field(default_factory=lambda: [10, 25, 50, 75, 90])
+    """Condition library. Glob filters select what the GA may use (e.g. ``"*.rsi*"``, ``"D1.*"``)."""
+
+    percentiles: list[int] = Field(default_factory=lambda: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95])
+    families: list[Literal["trend", "momentum", "volatility", "structure", "volume", "time"]] | None = None
+    exclude_features: list[str] = Field(default_factory=list)
+    include_conditions: list[str] = Field(default_factory=list)
+    exclude_conditions: list[str] = Field(default_factory=list)
     normalization_window: int = Field(250, ge=20)
     redundancy_threshold: float = Field(0.9, gt=0, le=1)
     min_activation_rate: float = Field(0.03, ge=0, lt=0.5)

@@ -6,8 +6,8 @@ stricte**. La priorité est d'éviter le data-mining bias et le sur-apprentissag
 backtests. Le pipeline est pilotable depuis Claude via un serveur MCP.
 
 ```
-CSV OHLCV ─► validation ─► features (H1/H4/D1, ~150 indicateurs normalisés)
-          ─► ~1000 conditions binaires (seuils = percentiles du TRAIN) ─► filtre de redondance
+CSV OHLCV ─► validation ─► features (180 indicateurs × H1/H4/D1, normalisés)
+          ─► ~7600 conditions binaires (seuils = percentiles du TRAIN, niveaux, croisements) ─► filtre de redondance
           ─► GA sur le TRAIN uniquement ─► candidats diversifiés
           ─► validation + walk-forward + permutation + DSR + sensibilité + Monte Carlo
           ─► finalistes ─► HOLDOUT (une seule fois) ─► classement, rapports HTML, Pine Script v6
@@ -19,14 +19,14 @@ Python 3.11+ et [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --extra dev
-uv run pytest            # ~80 tests, ~3 min
+uv run pytest            # ~90 tests, ~3 min
 ```
 
 ## Démarrage rapide sur données synthétiques
 
 ```bash
 uv run fxgen synth                                   # 12 paires, H1/H4/D1, 2015-2024 -> data/synthetic/
-uv run fxgen --config config/demo.yaml evolve        # GA + validation + robustesse (~5 min, 4 cœurs)
+uv run fxgen --config config/demo.yaml evolve        # GA + validation + robustesse (~10 min, 4 cœurs)
 uv run fxgen --config config/demo.yaml holdout       # holdout des finalistes, une seule fois
 ```
 
@@ -38,7 +38,7 @@ Le jeu synthétique contient un **edge de momentum faible et volontaire** (`--ed
 et rien ne doit survivre à la validation (`tests/test_validation.py::test_nothing_survives_on_pure_noise`).
 
 `config/demo.yaml` réduit les budgets pour aller vite. Pour un vrai travail, utilisez `config/default.yaml`
-(19 permutations, GA 200 × 30 : environ 55 min sur 4 cœurs pour 12 paires en H1 sur 7 ans, ~2 Go de RAM).
+(19 permutations, GA 200 × 30 : environ 1 h 15 estimée sur 4 cœurs pour 12 paires en H1 sur 10 ans).
 
 ## Brancher vos données
 
@@ -65,7 +65,7 @@ doublons retirés et les bougies OHLC réparées.
 | Section | Contenu |
 |---|---|
 | `splits` | `train_start` < `validation_start` < `holdout_start` < `end` |
-| `conditions` | percentiles, fenêtre de normalisation, seuil de redondance (\|corr\| > 0.9), taux d'activation min/max |
+| `conditions` | percentiles, seuil de redondance (\|corr\| > 0.9), taux d'activation min/max, filtres (familles, indicateurs exclus, conditions incluses / exclues) |
 | `tree` | profondeur max (3–4) |
 | `backtest` | stop / TP en multiples d'ATR (`atr_timeframe: D1` pour du swing), sortie temporelle, sortie au changement de branche, risque par trade |
 | `costs` | spread par paire (pips), commission aller-retour, swap long/short par nuit (triple le mercredi) |
@@ -110,6 +110,45 @@ Toute clé peut être surchargée en ligne de commande : `uv run fxgen --set ga.
   - permutation.
 - **Walk-forward du processus.** Le GA est relancé sur chaque fenêtre IS et son meilleur arbre est testé
   OOS. Le résultat (efficiency) est stocké avec le run.
+
+## Bibliothèque d'indicateurs
+
+180 indicateurs, chacun calculé en H1, H4 et D1 (540 séries), plus 21 règles calendaires. La liste complète
+est dans [`docs/INDICATORS.md`](docs/INDICATORS.md) (régénérée par `uv run fxgen indicators`).
+
+| Famille | Nombre | Exemples |
+|---|---|---|
+| Tendance | 62 | distances aux SMA/EMA/WMA/HMA/ALMA/DEMA/TEMA/KAMA, croisements de MA (9/21, 20/50, golden cross 50/200, HMA 9/21…), pentes, MACD, ADX/DI, Aroon, SuperTrend, Parabolic SAR, Ichimoku (TK, Kijun, nuage), Vortex, TRIX, DPO |
+| Momentum | 40 | RSI 2/7/14/21, stochastiques rapide / lente / RSI et leurs croisements %K/%D, MACD (5,35,5), (8,17,9), (19,39,9), CCI, Williams %R, TSI, CMO, Ultimate, Fisher, Coppock, Awesome, Elder Ray, ROC |
+| Volatilité | 20 | rangs d'ATR, ratios d'ATR, largeur et %B de Bollinger, squeeze Bollinger/Keltner, position Keltner, Ulcer, Mass index, Choppiness |
+| Structure et patterns | 50 | Donchian, distances aux plus hauts / plus bas (10 à 250), cassures 20/55, streak, inside / outside bar, engulfing, pin bar, doji, marubozu, NR7 |
+| Volume | 8 | z-score et rang du volume, OBV, MFI, CMF, VWMA, Force index |
+| Calendrier | 21 | sessions, ouvertures Londres / New York, jours, lundi matin, vendredi après-midi, début / milieu / fin de mois |
+
+Chaque indicateur produit plusieurs conditions :
+- au-dessus de 11 percentiles du train (5, 10, 20… 90, 95) ;
+- au-dessus de 0 pour les séries signées ;
+- en hausse ;
+- croisement de 0 ;
+- au-dessus de ses niveaux classiques (RSI 30/50/70, stochastiques 20/80, CCI ±100, ADX 20/25/40…) et
+  croisement de ces niveaux dans les 5 dernières bougies.
+
+Les patterns de bougies donnent « présent » et « apparu dans les 5 dernières bougies ». Cela fait environ
+7 600 conditions candidates ; le filtre de redondance en garde environ 6 100.
+
+Pour trier, sans toucher au code :
+
+```yaml
+conditions:
+  families: [trend, momentum]              # null = toutes
+  exclude_features: ["stoch5", "*_rank"]   # indicateurs non calculés
+  include_conditions: ["D1.*", "H4.*"]     # par exemple : uniquement le contexte H4 / D1
+  exclude_conditions: ["*:cross_*@*"]      # par exemple : sans les croisements de niveaux
+```
+
+**Mémoire** : les conditions sont évaluées à la volée à partir des indicateurs, donc la mémoire ne dépend
+pas du nombre de seuils. Pour 12 paires en H1 sur 10 ans, comptez environ 3 Go en régime établi et 4,5 Go
+au pic. Les filtres ci-dessus réduisent ces chiffres.
 
 ## Représentation des arbres
 
@@ -223,7 +262,11 @@ src/fxgen/
   quand stop et TP sont touchés dans la même bougie (hypothèse prudente).
 - Les coûts par défaut sont des ordres de grandeur pour un compte raw spread de prop firm. Calibrez-les sur
   votre broker.
-- La permutation coûte cher : 19 runs × (features + GA). Comptez environ 1 h avec la config par défaut sur
-  4 cœurs (mesuré : 53 min pour le run complet).
+- La permutation coûte cher : 19 runs × (features + GA). Comptez environ 1 h 15 avec la config par
+  défaut sur 4 cœurs (53 min mesurées avec l'ancienne bibliothèque de 49 indicateurs ; le calcul des
+  indicateurs prend maintenant environ 85 s au lieu de 35 s par run).
+- SuperTrend, Parabolic SAR, KAMA et Fisher sont récursifs : l'export Pine reprend les algorithmes de
+  référence, mais leurs premières valeurs peuvent différer de TradingView tant que l'historique chargé
+  n'est pas le même.
 - Les données synthétiques servent à tester la plomberie. Les performances obtenues dessus ne disent rien
   sur les marchés réels.

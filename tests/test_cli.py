@@ -27,3 +27,10 @@ def test_synth_and_datasets(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
 
 def test_cli_reports_errors(tmp_path: Path) -> None:
     assert main(["--set", f"storage.database={tmp_path / 'x.db'}", "holdout"]) == 1
+
+
+def test_indicators_doc_is_up_to_date(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["indicators"]) == 0
+    generated = capsys.readouterr().out
+    doc = Path(__file__).resolve().parents[1] / "docs" / "INDICATORS.md"
+    assert generated == doc.read_text(), "run `uv run fxgen indicators > docs/INDICATORS.md`"

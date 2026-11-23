@@ -25,9 +25,8 @@ from fxgen.data.loader import PairData
 from fxgen.data.resample import resample
 from fxgen.data.splits import split_period
 from fxgen.ga.evolve import evolve
-from fxgen.indicators.base import all_features
 from fxgen.market import make_dataset
-from fxgen.workspace import build_frames, build_library
+from fxgen.workspace import build_frames, build_library, select_features
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +73,7 @@ def permute_universe(universe: dict[str, PairData], cfg: Config, rng: np.random.
 def run_permutation_test(universe: dict[str, PairData], cfg: Config, real_best: float, seed: int) -> PermutationResult:
     """Distribution of best GA fitness on permuted data and the p-value of ``real_best``."""
     perm = cfg.validation.permutation
-    features = all_features()
+    features = select_features(cfg)
     rng = np.random.default_rng(seed)
     best: list[float] = []
     n_trials = 0

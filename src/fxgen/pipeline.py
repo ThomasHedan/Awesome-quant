@@ -6,6 +6,7 @@ reads it once per run, on that run's finalists only.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 from collections.abc import Callable
@@ -148,8 +149,14 @@ def _run_stages(cfg: Config, store: Store, run_id: str, notify: Progress, stop: 
     permutation: PermutationResult | None = None
     if cfg.validation.permutation.n_runs > 0 and candidates:
         notify("permutation", {"n_runs": cfg.validation.permutation.n_runs})
-        permutation = run_permutation_test(universe if universe is not None else load_universe(cfg), cfg, candidates[0].fitness.value, seed=cfg.seed + 7)
+        # Free the real workspace while permuted copies are built: it is rebuilt afterwards.
+        del ws
+        _WORKSPACES.pop(cfg.config_hash(), None)
+        gc.collect()
+        permutation = run_permutation_test(universe if universe is not None else load_universe(cfg), cfg,
+                                           candidates[0].fitness.value, seed=cfg.seed + 7)
         store.update_run(run_id, permutation_json=permutation.to_dict())
+        ws = get_workspace(cfg, universe)
     if stop():
         raise Cancelled(f"run {run_id} cancelled before walk-forward")
     if cfg.validation.walkforward.n_windows > 0:

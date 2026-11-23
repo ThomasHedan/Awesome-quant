@@ -9,6 +9,7 @@ explicit ``allow_holdout=True`` that only the final holdout stage passes.
 from __future__ import annotations
 
 import logging
+from fnmatch import fnmatch
 from dataclasses import dataclass, field
 
 from fxgen.backtest.engine import ExitRules
@@ -92,11 +93,29 @@ def build_frames(cfg: Config, universe: dict[str, PairData], features: list[Feat
     }
 
 
+def select_features(cfg: Config) -> list[Feature]:
+    """Library features after the ``conditions.families`` / ``exclude_features`` filters."""
+    cc = cfg.conditions
+    return [
+        f for f in all_features()
+        if (cc.families is None or f.family in cc.families)
+        and not any(fnmatch(f.name, pattern) for pattern in cc.exclude_features)
+    ]
+
+
+def filter_candidates(cfg: Config, candidates: list[Condition]) -> list[Condition]:
+    cc = cfg.conditions
+    out = [c for c in candidates if cc.families is None or c.family in cc.families]
+    if cc.include_conditions:
+        out = [c for c in out if any(fnmatch(c.id, p) for p in cc.include_conditions)]
+    return [c for c in out if not any(fnmatch(c.id, p) for p in cc.exclude_conditions)]
+
+
 def build_library(cfg: Config, frames: dict[str, PairFrame], features: list[Feature]) -> RedundancyReport:
     """Generate candidates, fit thresholds on train, drop inactive and redundant conditions."""
     train = split_period(cfg.splits, "train")
     timeframes = [cfg.data.execution_timeframe, *cfg.data.context_timeframes]
-    candidates = generate_candidates(features, timeframes, cfg.conditions.percentiles)
+    candidates = filter_candidates(cfg, generate_candidates(features, timeframes, cfg.conditions.percentiles))
     fitted = fit_thresholds(frames, candidates, train)
     return filter_conditions(
         frames,
@@ -111,7 +130,7 @@ def build_library(cfg: Config, frames: dict[str, PairFrame], features: list[Feat
 
 def build_workspace(cfg: Config, universe: dict[str, PairData] | None = None) -> Workspace:
     """Load data (unless given), compute features and the filtered condition library."""
-    features = all_features()
+    features = select_features(cfg)
     universe = universe if universe is not None else load_universe(cfg)
     frames = build_frames(cfg, universe, features)
     report = build_library(cfg, frames, features)

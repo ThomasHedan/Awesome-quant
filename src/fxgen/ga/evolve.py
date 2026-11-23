@@ -83,8 +83,7 @@ def _evaluate(tree: Tree) -> Evaluation:
     cfg: Config = _WORKER["cfg"]  # type: ignore[assignment]
     rules: ExitRules = _WORKER["rules"]  # type: ignore[assignment]
     result = run_backtest(tree, dataset, rules, cfg.costs, cfg.backtest.risk_per_trade_pct)
-    columns = dataset.column_of()
-    actions = [evaluate(tree, p.X, columns)[0] for p in dataset.pairs.values()]
+    actions = [evaluate(tree, dataset.lookup(p), len(p))[0] for p in dataset.pairs.values()]
     fitness = compute_fitness(tree, result, dataset.period, cfg.fitness)
     return Evaluation(tree, tree_hash(tree), fitness, phenotype(actions))
 

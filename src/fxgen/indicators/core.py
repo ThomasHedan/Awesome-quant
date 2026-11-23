@@ -203,3 +203,262 @@ def mfi(df: pd.DataFrame, length: int) -> pd.Series:
 def obv(df: pd.DataFrame) -> pd.Series:
     direction = np.sign(df["close"].diff().fillna(0.0))
     return (direction * df["volume"]).cumsum()
+
+
+def _windows(x: pd.Series, length: int) -> tuple[np.ndarray, np.ndarray]:
+    values = x.to_numpy(np.float64)
+    out = np.full(values.shape[0], np.nan)
+    if values.shape[0] >= length:
+        return np.lib.stride_tricks.sliding_window_view(values, length), out
+    return np.empty((0, length)), out
+
+
+def _weighted(x: pd.Series, weights: np.ndarray) -> pd.Series:
+    """Weighted moving average; ``weights`` ordered oldest to newest, NaN-propagating."""
+    windows, out = _windows(x, len(weights))
+    if windows.shape[0]:
+        out[len(weights) - 1 :] = windows @ (weights / weights.sum())
+    return pd.Series(out, index=x.index)
+
+
+def wma(x: pd.Series, length: int) -> pd.Series:
+    """Pine ``ta.wma``: linear weights, the newest bar weighs ``length``."""
+    return _weighted(x, np.arange(1, length + 1, dtype=np.float64))
+
+
+def hma(x: pd.Series, length: int) -> pd.Series:
+    """Pine ``ta.hma``: wma(2 * wma(x, n/2) - wma(x, n), sqrt(n))."""
+    return wma(2 * wma(x, length // 2) - wma(x, length), int(np.floor(np.sqrt(length))))
+
+
+def alma(x: pd.Series, length: int, offset: float = 0.85, sigma: float = 6.0) -> pd.Series:
+    """Pine ``ta.alma``."""
+    m = offset * (length - 1)
+    s = length / sigma
+    i = np.arange(length, dtype=np.float64)
+    return _weighted(x, np.exp(-((i - m) ** 2) / (2 * s * s)))
+
+
+def dema(x: pd.Series, length: int) -> pd.Series:
+    e1 = ema(x, length)
+    return 2 * e1 - ema(e1, length)
+
+
+def tema(x: pd.Series, length: int) -> pd.Series:
+    e1 = ema(x, length)
+    e2 = ema(e1, length)
+    return 3 * e1 - 3 * e2 + ema(e2, length)
+
+
+@numba.njit(cache=True)
+def _kama(close: np.ndarray, sc: np.ndarray) -> np.ndarray:
+    out = np.empty(close.shape[0])
+    k = close[0]
+    for i in range(close.shape[0]):
+        s = 0.0 if np.isnan(sc[i]) else sc[i]
+        k = k + s * (close[i] - k)
+        out[i] = k
+    return out
+
+
+def kama(x: pd.Series, length: int = 10, fast: int = 2, slow: int = 30) -> pd.Series:
+    """Kaufman adaptive moving average, seeded with the first close."""
+    fast_sc, slow_sc = 2.0 / (fast + 1), 2.0 / (slow + 1)
+    sc = (efficiency_ratio(x, length) * (fast_sc - slow_sc) + slow_sc) ** 2
+    return pd.Series(_kama(x.to_numpy(np.float64), sc.to_numpy(np.float64)), index=x.index)
+
+
+@numba.njit(cache=True)
+def _supertrend(hl2: np.ndarray, close: np.ndarray, atr_: np.ndarray, factor: float) -> np.ndarray:
+    n = close.shape[0]
+    out = np.full(n, np.nan)
+    prev_lower = 0.0
+    prev_upper = 0.0
+    prev_st = np.nan
+    for i in range(n):
+        upper = hl2[i] + factor * atr_[i]
+        lower = hl2[i] - factor * atr_[i]
+        if i > 0:
+            if not (lower > prev_lower or close[i - 1] < prev_lower):
+                lower = prev_lower
+            if not (upper < prev_upper or close[i - 1] > prev_upper):
+                upper = prev_upper
+        if i == 0 or np.isnan(atr_[i - 1]):
+            direction = 1
+        elif prev_st == prev_upper:
+            direction = -1 if close[i] > upper else 1
+        else:
+            direction = 1 if close[i] < lower else -1
+        st = lower if direction == -1 else upper
+        out[i] = st
+        prev_lower = 0.0 if np.isnan(lower) else lower
+        prev_upper = 0.0 if np.isnan(upper) else upper
+        prev_st = st
+    return out
+
+
+def supertrend(df: pd.DataFrame, factor: float = 3.0, period: int = 10) -> pd.Series:
+    """Pine ``ta.supertrend(factor, period)`` line (below price in an uptrend)."""
+    hl2 = ((df["high"] + df["low"]) / 2).to_numpy(np.float64)
+    return pd.Series(_supertrend(hl2, df["close"].to_numpy(np.float64), atr(df, period).to_numpy(np.float64), factor),
+                     index=df.index)
+
+
+@numba.njit(cache=True)
+def _sar(high: np.ndarray, low: np.ndarray, close: np.ndarray, start: float, inc: float, maximum: float) -> np.ndarray:
+    n = close.shape[0]
+    out = np.full(n, np.nan)
+    result = np.nan
+    max_min = np.nan
+    acc = np.nan
+    below = False
+    for i in range(1, n):
+        first = False
+        if i == 1:
+            if close[1] > close[0]:
+                below = True
+                max_min = high[1]
+                result = low[0]
+            else:
+                below = False
+                max_min = low[1]
+                result = high[0]
+            first = True
+            acc = start
+        result = result + acc * (max_min - result)
+        if below:
+            if result > low[i]:
+                first = True
+                below = False
+                result = max(high[i], max_min)
+                max_min = low[i]
+                acc = start
+        else:
+            if result < high[i]:
+                first = True
+                below = True
+                result = min(low[i], max_min)
+                max_min = high[i]
+                acc = start
+        if not first:
+            if below:
+                if high[i] > max_min:
+                    max_min = high[i]
+                    acc = min(acc + inc, maximum)
+            else:
+                if low[i] < max_min:
+                    max_min = low[i]
+                    acc = min(acc + inc, maximum)
+        if below:
+            result = min(result, low[i - 1])
+            if i > 1:
+                result = min(result, low[i - 2])
+        else:
+            result = max(result, high[i - 1])
+            if i > 1:
+                result = max(result, high[i - 2])
+        out[i] = result
+    return out
+
+
+def sar(df: pd.DataFrame, start: float = 0.02, inc: float = 0.02, maximum: float = 0.2) -> pd.Series:
+    """Pine ``ta.sar`` (reference implementation from the Pine manual)."""
+    return pd.Series(
+        _sar(df["high"].to_numpy(np.float64), df["low"].to_numpy(np.float64), df["close"].to_numpy(np.float64),
+             start, inc, maximum),
+        index=df.index,
+    )
+
+
+@numba.njit(cache=True)
+def _fisher(raw: np.ndarray) -> np.ndarray:
+    n = raw.shape[0]
+    out = np.full(n, np.nan)
+    value_prev = 0.0
+    fish_prev = 0.0
+    for i in range(n):
+        v = 0.66 * (raw[i] - 0.5) + 0.67 * value_prev
+        if np.isnan(v):
+            value_prev = 0.0
+            fish_prev = 0.0
+            continue
+        v = 0.999 if v > 0.99 else (-0.999 if v < -0.99 else v)
+        f = 0.5 * np.log((1 + v) / (1 - v)) + 0.5 * fish_prev
+        out[i] = f
+        value_prev = v
+        fish_prev = f
+    return out
+
+
+def fisher(df: pd.DataFrame, length: int = 10) -> pd.Series:
+    """Ehlers Fisher transform of hl2 (TradingView built-in script)."""
+    hl2 = (df["high"] + df["low"]) / 2
+    hi, lo = highest(hl2, length), lowest(hl2, length)
+    raw = (hl2 - lo) / (hi - lo).replace(0, np.nan)
+    return pd.Series(_fisher(raw.to_numpy(np.float64)), index=df.index)
+
+
+def tsi(x: pd.Series, short: int = 13, long: int = 25) -> pd.Series:
+    """Pine ``ta.tsi(x, short, long)`` in [-1, 1]."""
+    change = x.diff()
+    num = ema(ema(change, long), short)
+    den = ema(ema(change.abs(), long), short)
+    return num / den.replace(0, np.nan)
+
+
+def cmo(x: pd.Series, length: int) -> pd.Series:
+    """Pine ``ta.cmo``."""
+    mom = x.diff()
+    up = mom.clip(lower=0).rolling(length, min_periods=length).sum()
+    down = (-mom).clip(lower=0).rolling(length, min_periods=length).sum()
+    return 100 * (up - down) / (up + down).replace(0, np.nan)
+
+
+def ultimate(df: pd.DataFrame, a: int = 7, b: int = 14, c: int = 28) -> pd.Series:
+    prev_close = df["close"].shift(1)
+    hi = np.maximum(df["high"], prev_close)
+    lo = np.minimum(df["low"], prev_close)
+    bp, tr = df["close"] - lo, hi - lo
+
+    def avg(n: int) -> pd.Series:
+        return bp.rolling(n, min_periods=n).sum() / tr.rolling(n, min_periods=n).sum().replace(0, np.nan)
+
+    return 100 * (4 * avg(a) + 2 * avg(b) + avg(c)) / 7
+
+
+def vortex(df: pd.DataFrame, length: int = 14) -> pd.Series:
+    """VI+ - VI-."""
+    vmp = (df["high"] - df["low"].shift(1)).abs().rolling(length, min_periods=length).sum()
+    vmm = (df["low"] - df["high"].shift(1)).abs().rolling(length, min_periods=length).sum()
+    tr = atr(df, 1).rolling(length, min_periods=length).sum()
+    return (vmp - vmm) / tr.replace(0, np.nan)
+
+
+def trix(x: pd.Series, length: int = 15) -> pd.Series:
+    """10000 x one-bar change of the triple EMA of log(close)."""
+    triple = ema(ema(ema(np.log(x), length), length), length)
+    return 10000 * triple.diff()
+
+
+def donchian_mid(df: pd.DataFrame, length: int) -> pd.Series:
+    return (highest(df["high"], length) + lowest(df["low"], length)) / 2
+
+
+@numba.njit(cache=True)
+def _streak(close: np.ndarray) -> np.ndarray:
+    out = np.zeros(close.shape[0])
+    s = 0.0
+    for i in range(1, close.shape[0]):
+        if close[i] > close[i - 1]:
+            s = s + 1 if s > 0 else 1.0
+        elif close[i] < close[i - 1]:
+            s = s - 1 if s < 0 else -1.0
+        else:
+            s = 0.0
+        out[i] = s
+    return out
+
+
+def streak(x: pd.Series) -> pd.Series:
+    """Consecutive up (+) or down (-) closes."""
+    return pd.Series(_streak(x.to_numpy(np.float64)), index=x.index)

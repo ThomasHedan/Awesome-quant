@@ -50,8 +50,9 @@ def test_simplify_resolves_repeated_condition_and_equal_leaves() -> None:
 
 def test_evaluate_masks() -> None:
     X = np.array([[1, 1], [1, 0], [0, 1], [0, 0]], dtype=bool)
-    action, leaf = evaluate(TREE, X, {"a": 0, "b": 1})
+    cols = {"a": X[:, 0], "b": X[:, 1]}
+    action, leaf = evaluate(TREE, cols.__getitem__, 4)
     assert action.tolist() == [1, 0, -1, -1]
     assert leaf.tolist() == [0, 1, 2, 2]
-    with pytest.raises(TreeError):
-        evaluate(Node("zz", L, S), X, {"a": 0})
+    with pytest.raises(KeyError):
+        evaluate(Node("zz", L, S), cols.__getitem__, 4)

@@ -8,6 +8,7 @@ any condition, even one that was not kept after redundancy filtering:
     ``D1.dist_ema200>0``    signed feature above zero (position vs another series)
     ``H1.macd_hist:rising`` feature higher than ``RISING_LAG`` bars ago
     ``H4.ema20_50:cross_up`` zero cross up within the last ``CROSS_WINDOW`` bars
+    ``H4.rsi14:cross_down@70`` cross below a level within the last ``CROSS_WINDOW`` bars
     ``H1.cal:session_london`` calendar rule
 
 A condition is evaluated at the close of the decision bar. Rising and cross
@@ -32,7 +33,8 @@ RISING_LAG = 3
 CROSS_WINDOW = 5
 _ID_RE = re.compile(
     r"^(?P<tf>H1|H4|D1)\.(?P<feature>\w+)"
-    r"(?:>(?P<level>p\d{1,2}|-?\d+(?:\.\d+)?)|:(?P<kind>rising|cross_up|cross_down|session_\w+|day_\w+))$"
+    r"(?:>(?P<level>p\d{1,2}|-?\d+(?:\.\d+)?)"
+    r"|:(?P<kind>rising|cross_up|cross_down|session_\w+|day_\w+|month_\w+|hour_\w+)(?:@(?P<cross>-?\d+(?:\.\d+)?))?)$"
 )
 
 
@@ -48,6 +50,7 @@ class Condition:
     percentile: int | None = None
     threshold: float | None = None
     label: str = ""
+    level: float = 0.0
 
     @property
     def column(self) -> str:
@@ -62,7 +65,7 @@ class Condition:
             return f"{self.timeframe} {self.label} rising over {RISING_LAG} bars"
         if self.kind in ("cross_up", "cross_down"):
             way = "above" if self.kind == "cross_up" else "below"
-            return f"{self.timeframe} {self.label} crossed {way} 0 within {CROSS_WINDOW} bars"
+            return f"{self.timeframe} {self.label} crossed {way} {self.level:g} within {CROSS_WINDOW} bars"
         return self.label
 
     def to_dict(self) -> dict[str, object]:
@@ -82,7 +85,7 @@ def parse_condition_id(cid: str, features: list[Feature]) -> Condition:
     match = _ID_RE.match(cid)
     if not match:
         raise TreeError(f"invalid condition id {cid!r}; expected e.g. 'H4.rsi14>p75' or 'D1.dist_ema200:rising'")
-    tf, name, level, kind = match["tf"], match["feature"], match["level"], match["kind"]
+    tf, name, level, kind, cross = match["tf"], match["feature"], match["level"], match["kind"], match["cross"]
     if name == "cal":
         rules = {r.name: r for r in CALENDAR_RULES}
         if kind not in rules:
@@ -98,7 +101,10 @@ def parse_condition_id(cid: str, features: list[Feature]) -> Condition:
         return Condition(cid, feature.family, tf, name, "above", threshold=float(level), label=feature.label)
     if kind not in ("rising", "cross_up", "cross_down"):
         raise TreeError(f"condition kind {kind!r} only applies to calendar rules")
-    return Condition(cid, feature.family, tf, name, kind, label=feature.label)  # type: ignore[arg-type]
+    if cross is not None and kind == "rising":
+        raise TreeError(f"'@level' only applies to cross_up / cross_down in {cid!r}")
+    return Condition(cid, feature.family, tf, name, kind, label=feature.label,  # type: ignore[arg-type]
+                     level=float(cross) if cross is not None else 0.0)
 
 
 def calendar_rule_name(cond: Condition) -> str:
@@ -119,6 +125,10 @@ def generate_candidates(features: list[Feature], timeframes: list[str], percenti
     for tf in timeframes:
         for f in features:
             base = f"{tf}.{f.name}"
+            if f.binary:
+                out.append(Condition(f"{base}>0.5", f.family, tf, f.name, "above", threshold=0.5, label=f.label))
+                out.append(Condition(f"{base}:cross_up@0.5", f.family, tf, f.name, "cross_up", label=f.label, level=0.5))
+                continue
             for p in percentiles:
                 out.append(Condition(f"{base}>p{p}", f.family, tf, f.name, "above", percentile=p, label=f.label))
             if f.signed:
@@ -127,10 +137,26 @@ def generate_candidates(features: list[Feature], timeframes: list[str], percenti
             if f.crosses:
                 out.append(Condition(f"{base}:cross_up", f.family, tf, f.name, "cross_up", label=f.label))
                 out.append(Condition(f"{base}:cross_down", f.family, tf, f.name, "cross_down", label=f.label))
+            for lv in f.levels:
+                out.append(Condition(f"{base}>{lv:g}", f.family, tf, f.name, "above", threshold=float(lv), label=f.label))
+                for kind in ("cross_up", "cross_down"):
+                    out.append(Condition(f"{base}:{kind}@{lv:g}", f.family, tf, f.name, kind, label=f.label, level=float(lv)))
     return out
 
 
-def native_state(values: pd.Series, kind: Kind) -> pd.Series:
+def state_suffixes(feature: Feature) -> list[tuple[str, Kind, float]]:
+    """(id suffix, kind, level) of every precomputed state of a feature."""
+    if feature.binary:
+        return [(":cross_up@0.5", "cross_up", 0.5)]
+    out: list[tuple[str, Kind, float]] = [(":rising", "rising", 0.0)]
+    if feature.crosses:
+        out += [(":cross_up", "cross_up", 0.0), (":cross_down", "cross_down", 0.0)]
+    for lv in feature.levels:
+        out += [(f":cross_up@{lv:g}", "cross_up", float(lv)), (f":cross_down@{lv:g}", "cross_down", float(lv))]
+    return out
+
+
+def native_state(values: pd.Series, kind: Kind, level: float = 0.0) -> pd.Series:
     """Rising / cross state computed on the feature's own timeframe (float 0/1, NaN in warmup)."""
     if kind == "rising":
         prev = values.shift(RISING_LAG)
@@ -138,9 +164,9 @@ def native_state(values: pd.Series, kind: Kind) -> pd.Series:
         return state.where(values.notna() & prev.notna())
     prev = values.shift(1)
     if kind == "cross_up":
-        event = (values > 0) & (prev <= 0)
+        event = (values > level) & (prev <= level)
     else:
-        event = (values < 0) & (prev >= 0)
+        event = (values < level) & (prev >= level)
     return event.astype("float32").rolling(CROSS_WINDOW, min_periods=1).max().where(values.notna())
 
 

@@ -36,9 +36,9 @@ def _condition_body(cond: Condition, feature_fn: str | None) -> str:
     if cond.kind == "rising":
         return f"_v = {feature_fn}()\n_v > _v[{RISING_LAG}]"
     if cond.kind == "cross_up":
-        return f"_v = {feature_fn}()\nnz(ta.barssince(ta.crossover(_v, 0)), 9999) < {CROSS_WINDOW}"
+        return f"_v = {feature_fn}()\nnz(ta.barssince(ta.crossover(_v, {cond.level!r})), 9999) < {CROSS_WINDOW}"
     if cond.kind == "cross_down":
-        return f"_v = {feature_fn}()\nnz(ta.barssince(ta.crossunder(_v, 0)), 9999) < {CROSS_WINDOW}"
+        return f"_v = {feature_fn}()\nnz(ta.barssince(ta.crossunder(_v, {cond.level!r})), 9999) < {CROSS_WINDOW}"
     rules = {r.name: r for r in CALENDAR_RULES}
     return rules[calendar_rule_name(cond)].pine
 
@@ -86,6 +86,7 @@ def export_pine(
         "",
         'sessionHour = hour(time_close, "UTC")',
         'sessionDay = dayofweek(time_close, "UTC")',
+        'sessionDom = dayofmonth(time_close, "UTC")',
         "",
     ]
     feature_fns: dict[str, str] = {}

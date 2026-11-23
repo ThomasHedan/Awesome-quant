@@ -15,6 +15,8 @@ from fxgen.config import DEFAULT_CONFIG_PATH, PROJECT_ROOT, load_config
 from fxgen.data.loader import discover_datasets
 from fxgen.data.synthetic import write_universe
 from fxgen.errors import FxgenError
+from fxgen.indicators.base import all_features
+from fxgen.indicators.time import CALENDAR_RULES
 from fxgen.logging_setup import setup_logging
 from fxgen.pipeline import generate_report, run_holdout, run_pipeline, write_pine
 from fxgen.storage.db import Store
@@ -35,6 +37,43 @@ def parse_overrides(items: list[str]) -> dict[str, Any]:
             node = node.setdefault(part, {})
         node[parts[-1]] = yaml.safe_load(raw)
     return out
+
+
+def indicators_markdown() -> str:
+    """Markdown table of every feature and calendar rule, with the conditions each one generates."""
+    families = {"trend": "Tendance", "momentum": "Momentum", "volatility": "Volatilité",
+                "structure": "Structure de prix et patterns", "volume": "Volume (ignorés sans volume)"}
+    features = all_features()
+    lines = [
+        "# Bibliothèque d'indicateurs",
+        "",
+        f"{len(features)} indicateurs, calculés sur chaque timeframe (H1, H4, D1), plus {len(CALENDAR_RULES)} "
+        "règles calendaires. Généré par `uv run fxgen indicators`.",
+        "",
+        "Conditions générées par indicateur : `>pXX` (percentiles du train), `>0` (signé), `:rising`, "
+        "`:cross_up` / `:cross_down` (croisement de 0), `>N` et `:cross_up@N` / `:cross_down@N` (niveaux). "
+        "Les patterns binaires donnent `>0.5` (présent) et `:cross_up@0.5` (apparu dans les 5 dernières bougies).",
+        "",
+    ]
+    for family, title in families.items():
+        rows = [f for f in features if f.family == family]
+        lines += [f"## {title} ({len(rows)})", "", "| Nom | Définition | Conditions en plus des percentiles |", "|---|---|---|"]
+        for f in rows:
+            extra = []
+            if f.binary:
+                extra = ["pattern 0/1 (pas de percentiles)"]
+            else:
+                if f.signed:
+                    extra.append("`>0`")
+                if f.crosses:
+                    extra.append("croisement de 0")
+                if f.levels:
+                    extra.append("niveaux " + ", ".join(f"{lv:g}" for lv in f.levels))
+            lines.append(f"| `{f.name}` | {f.label} | {', '.join(extra) or '-'} |")
+        lines.append("")
+    lines += [f"## Calendrier ({len(CALENDAR_RULES)})", "", "| Nom | Définition |", "|---|---|"]
+    lines += [f"| `{r.name}` | {r.label} |" for r in CALENDAR_RULES]
+    return "\n".join(lines) + "\n"
 
 
 def _print(data: Any) -> None:
@@ -64,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     pine = sub.add_parser("pine", help="Pine Script v6 export of a tree")
     pine.add_argument("tree_id")
     sub.add_parser("runs", help="list runs")
+    sub.add_parser("indicators", help="print the indicator library as Markdown")
 
     args = parser.parse_args(argv)
     setup_logging(logging.DEBUG if args.verbose else logging.INFO)
@@ -88,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             _print({"pine": str(write_pine(store, args.tree_id))})
         elif args.command == "runs":
             _print(store.list_runs())
+        elif args.command == "indicators":
+            sys.stdout.write(indicators_markdown())
     except FxgenError as exc:
         logger.error("%s", exc)
         return 1

@@ -26,7 +26,7 @@ def _split(close: list[float], high: list[float] | None = None, low: list[float]
     o = np.array(open_) if open_ else np.concatenate([[c[0]], c[:-1]])
     h = np.array(high) if high else np.maximum(o, c)
     lo = np.array(low) if low else np.minimum(o, c)
-    return PairSplit("EURUSD", idx, o, h, lo, c, np.full(n, atr), np.zeros((n, 0), dtype=bool))
+    return PairSplit("EURUSD", idx, o, h, lo, c, np.full(n, atr), np.zeros((n, 0), np.float32), np.zeros((n, 0), bool), {}, {})
 
 
 def _signal(n: int, at: dict[int, int]) -> tuple[np.ndarray, np.ndarray]:

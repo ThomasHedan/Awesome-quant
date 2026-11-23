@@ -25,7 +25,10 @@ class Feature:
     lines whose last line is the returned value.
 
     ``signed`` means zero is a meaningful level (e.g. distance to a moving
-    average), which enables the ``> 0`` and zero-cross conditions.
+    average), which enables the ``> 0`` condition; ``crosses`` adds zero-cross
+    conditions. ``levels`` are classic absolute levels (RSI 30/70...): each one
+    gives a ``> level`` condition and level crosses. ``binary`` marks 0/1 flags
+    (candle patterns): only ``> 0.5`` and "happened within the last bars".
     """
 
     name: str
@@ -36,13 +39,16 @@ class Feature:
     signed: bool = False
     crosses: bool = False
     needs_volume: bool = False
+    levels: tuple[float, ...] = ()
+    binary: bool = False
 
 
 def all_features() -> list[Feature]:
     """Every feature of the library, in a stable order."""
-    from fxgen.indicators import momentum, structure, trend, volatility, volume
+    from fxgen.indicators import momentum, patterns, structure, trend, volatility, volume
 
-    features = [*trend.FEATURES, *momentum.FEATURES, *volatility.FEATURES, *structure.FEATURES, *volume.FEATURES]
+    features = [*trend.FEATURES, *momentum.FEATURES, *volatility.FEATURES, *structure.FEATURES,
+                *patterns.FEATURES, *volume.FEATURES]
     names = [f.name for f in features]
     duplicates = {n for n in names if names.count(n) > 1}
     if duplicates:

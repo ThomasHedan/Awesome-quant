@@ -38,13 +38,12 @@ def run_backtest(
     pairs: list[str] | None = None,
 ) -> BacktestResult:
     """Evaluate ``tree`` on each pair, simulate trades, aggregate metrics."""
-    columns = dataset.column_of()
     frames: list[pd.DataFrame] = []
     per_pair: dict[str, dict[str, Any]] = {}
     for pair, data in dataset.pairs.items():
         if pairs is not None and pair not in pairs:
             continue
-        action, leaf = evaluate(tree, data.X, columns)
+        action, leaf = evaluate(tree, dataset.lookup(data), len(data))
         trades = simulate_pair(data, action, leaf, rules, costs)
         per_pair[pair] = compute_metrics(trades, dataset.period, risk_pct)
         if not trades.empty:

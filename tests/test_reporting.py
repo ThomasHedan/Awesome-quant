@@ -31,7 +31,7 @@ def test_export_pine_structure(ws: Workspace) -> None:
     assert 'request.security(syminfo.tickerid, "240", c2_fn(), lookahead = barmerge.lookahead_off)' in code
     assert "bool c1 = c1_fn()" in code
     assert "bool c3 = sessionHour >= 7 and sessionHour < 16" in code
-    assert "ta.crossunder(_v, 0)" in code and "_v > _v[3]" in code
+    assert "ta.crossunder(_v, 0.0)" in code and "_v > _v[3]" in code
     assert "[_macd, _signal, _hist] = ta.macd(close, 12, 26, 9)" in code
     assert "int action = (c0 ? (c1 ? 1 : 0) : (c2 ? -1 : (c3 ? 1 : 0)))" in code
     assert 'array.from("TT", "TF", "FT", "FFT", "FFF")' in code
