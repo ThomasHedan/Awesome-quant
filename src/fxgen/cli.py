@@ -1,4 +1,4 @@
-"""Command line: ``fxgen synth | datasets | evolve | holdout | report | pine | runs``."""
+"""Command line of fxgen: data, evolution, holdout, reports, classification and portfolios."""
 
 from __future__ import annotations
 

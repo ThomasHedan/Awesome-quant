@@ -14,6 +14,7 @@ The priority is avoiding data-mining bias, not pretty backtests. See README.md f
    accesses and manual backtests count as trials in the deflated Sharpe ratio. Never add a path that reads
    holdout data without going through the ledger, and never let the MCP server override `splits`.
 5. **Reproducibility.** Every random draw is seeded from the config.
+6. **Portfolios and classifications only read stored train / validation results**, never the holdout.
 
 ## Conventions
 
@@ -25,11 +26,15 @@ The priority is avoiding data-mining bias, not pretty backtests. See README.md f
 - New feature: add it to the family module in `indicators/` with a matching Pine v6 body, keep the
   look-ahead test green, and regenerate `docs/INDICATORS.md` (`uv run fxgen indicators > docs/INDICATORS.md`).
 - `mcp` is pinned `<2` because FastMCP was renamed in 2.x.
+- Conditions are evaluated lazily from zero-copy feature views (`market.Dataset.column`); do not build
+  dense condition matrices.
+- Never assume nanosecond timestamps (pandas 3 loads CSV dates in microseconds).
+- Secrets (e.g. `LSE_API_KEY`) come from the environment only; never write them to files.
 
 ## Commands
 
 ```bash
-uv run pytest                                   # full suite (~3 min)
+uv run pytest                                   # full suite (~7 min)
 uv run pytest -k "lookahead or causal"           # causality tests
 uv run fxgen synth && uv run fxgen --config config/demo.yaml evolve && uv run fxgen --config config/demo.yaml holdout
 uv run fxgen-mcp                                # MCP server (stdio), FXGEN_CONFIG selects the YAML
