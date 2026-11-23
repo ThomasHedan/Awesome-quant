@@ -34,6 +34,7 @@ Toutes acceptent `--config FICHIER` et `--set section.cle=valeur`.
 | `holdout [RUN_ID]` | holdout des finalistes, une seule fois par run, puis rapports et Pine |
 | `report` / `pine` / `classify TREE_ID` | rapport HTML / export Pine v6 / type de stratégie |
 | `portfolio [--runs ...]` | portefeuille de stratégies non corrélées |
+| `challenge --tree ID` / `--portfolio ID` | simulateur de challenge prop firm |
 | `runs` / `indicators` | liste des runs / liste des indicateurs en Markdown |
 
 Sorties dans `output/<run_id>/` : `ranking.csv|json`, `reports/*.html`, `pine/*.pine`.
@@ -76,7 +77,7 @@ data:
 | `backtest`, `costs` | stop/TP en ATR (`atr_timeframe: D1`), sortie temporelle ou au changement de branche, risque par trade ; spread par paire, commission, swap |
 | `fitness` | trades min/max, pénalité de complexité, dépendance à une paire ou à une période |
 | `validation` | walk-forward, permutation, sensibilité, Monte Carlo, `dsr_min`, candidats, finalistes |
-| `prop_firm` | DD max, perte journalière max, risque minimal exigé |
+| `prop_firm` | DD max, perte journalière max, risque minimal exigé ; `challenge` : phases (objectif, durée, jours tradés min), DD fixe ou suiveur, frais, grille de risque, décote de l'edge |
 | `portfolio` | nombre de stratégies, corrélation max, critère, quota par type, pondération |
 
 ## Garanties anti-biais
@@ -126,6 +127,28 @@ data:
   - donne les pondérations, les métriques et le risque par trade compatible avec la prop firm ;
   - ne lit jamais le holdout.
 
+## Simulateur de challenge prop firm
+
+`fxgen challenge --tree ID` (ou `--portfolio ID`, ou l'outil MCP `simulate_challenge`) rejoue des milliers de
+challenges à partir des journées du train et de la validation, tirées par blocs de 5 jours.
+
+**Règles** : objectifs des phases (8 % puis 5 % par défaut), perte journalière max, DD max (fixe ou
+suiveur), jours tradés minimum, durée limite, puis période de compte financé.
+
+**Résultat, pour chaque risque par trade** :
+- probabilité de réussir chaque phase et le challenge complet ;
+- cause des échecs (perte journalière, DD, temps) ;
+- jours médians pour réussir ;
+- coût attendu en frais ;
+- probabilité de garder le compte financé.
+
+Le meilleur risque est indiqué.
+
+**Prudence** :
+- `edge_haircut: 0.5` retire la moitié du rendement moyen du backtest, toujours optimiste ;
+- les pertes latentes intrajournalières ne sont pas modélisées, donc le vrai risque journalier est un peu plus
+  élevé.
+
 ## Export Pine v6
 
 L'export est un indicateur TradingView :
@@ -155,7 +178,7 @@ Claude Desktop (`claude_desktop_config.json`) :
 | `list_datasets`, `list_conditions`, `list_runs` | `run_evolution` (tâche de fond) → `get_job_status`, `cancel_job` |
 | `get_rankings`, `get_tree`, `get_metrics`, `get_trades` | `backtest_tree` (journalisé ; compte dans le DSR) |
 | `get_robustness`, `compare_trees` | `run_robustness`, `classify_strategy` |
-| `get_portfolio` | `build_portfolio`, `export_pine`, `generate_report` |
+| `get_portfolio` | `build_portfolio`, `simulate_challenge`, `export_pine`, `generate_report` |
 
 Restrictions côté MCP :
 - les sections `splits` et `storage` ne peuvent pas être modifiées ;

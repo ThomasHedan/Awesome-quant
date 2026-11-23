@@ -118,3 +118,12 @@ def test_classification_and_portfolio(finished: tuple[Config, Store, str]) -> No
     assert Path(pf["report"]).exists()
     assert store.get_portfolio(pf["portfolio_id"])["members"][0]["tree_id"] == members[0]["tree_id"]
     assert set(pf["result"]["splits"]) >= {"train", "validation"}
+
+    from fxgen.cli import challenge_table
+    from fxgen.pipeline import challenge_for_portfolio, challenge_for_tree
+
+    one = challenge_for_tree(store, rows[0]["tree_id"], run_id)
+    assert len(one["by_risk"]) == 6 and 0 <= one["best_p_pass"] <= 1
+    assert "pass all" in challenge_table(one)
+    assert challenge_for_portfolio(store, pf["portfolio_id"])["members"] == [m["tree_id"] for m in members]
+    assert store.holdout_trial_count() == holdout_before

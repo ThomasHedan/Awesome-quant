@@ -41,7 +41,7 @@ def test_tools_are_registered() -> None:
     assert {"list_datasets", "list_conditions", "get_rankings", "get_tree", "get_metrics", "get_trades",
             "get_robustness", "compare_trees", "run_evolution", "get_job_status", "cancel_job", "backtest_tree",
             "run_robustness", "export_pine", "generate_report", "classify_strategy", "build_portfolio",
-            "get_portfolio"} <= names
+            "get_portfolio", "simulate_challenge"} <= names
 
 
 def test_read_tools(env: dict[str, Any]) -> None:
@@ -86,6 +86,13 @@ def test_classify_and_portfolio_tools(env: dict[str, Any]) -> None:
     assert stored["members"][0]["tree_id"] == pf["members"][0]["tree_id"]
     with pytest.raises(ToolError):
         call("build_portfolio", {"max_correlation": 2})
+    ch = call("simulate_challenge", {"tree_id": env["tree_id"], "profit_targets_pct": [10], "max_days": 60,
+                                     "risk_grid": [0.5, 1.0], "drawdown_mode": "trailing"})
+    assert [r["risk_per_trade_pct"] for r in ch["by_risk"]] == [0.5, 1.0]
+    assert ch["rules"]["phases"][0]["profit_target_pct"] == 10 and ch["rules"]["drawdown_mode"] == "trailing"
+    assert call("simulate_challenge", {"portfolio_id": pf["portfolio_id"]})["portfolio_id"] == pf["portfolio_id"]
+    with pytest.raises(ToolError, match="exactly one"):
+        call("simulate_challenge", {})
 
 
 def test_validation_errors(env: dict[str, Any]) -> None:

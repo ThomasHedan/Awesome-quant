@@ -121,6 +121,19 @@ prop_firm:
   max_daily_loss_pct: 5.0
   # Monte Carlo check: the 95% drawdown must stay under the limit at this risk per trade.
   min_risk_per_trade_pct: 0.25
+  # Challenge simulator (fxgen challenge / MCP simulate_challenge).
+  challenge:
+    phases:
+      - {name: phase 1, profit_target_pct: 8.0, max_days: null, min_trading_days: 4}
+      - {name: phase 2, profit_target_pct: 5.0, max_days: null, min_trading_days: 4}
+    drawdown_mode: static         # static (from the initial balance) or trailing (from the equity peak)
+    no_limit_cap_days: 365        # a phase without max_days is counted as failed after this many days
+    funded_days: 120              # survival of the funded account after passing
+    fee: 0                        # challenge price, for the expected cost
+    risk_grid: [0.25, 0.5, 0.75, 1.0, 1.5, 2.0]   # risk per trade (%) to compare
+    n_sims: 5000
+    block_days: 5                 # bootstrap blocks keep losing streaks
+    edge_haircut: 0.5             # remove 50% of the backtest's mean daily return (backtests are optimistic)
 
 # Aggregator of decorrelated strategies (fxgen portfolio / MCP build_portfolio).
 portfolio:

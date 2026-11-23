@@ -22,6 +22,8 @@ from fxgen.indicators.time import CALENDAR_RULES
 from fxgen.logging_setup import setup_logging
 from fxgen.pipeline import (
     build_and_report_portfolio,
+    challenge_for_portfolio,
+    challenge_for_tree,
     classify_stored,
     generate_report,
     run_holdout,
@@ -98,6 +100,23 @@ def lse_download(args: argparse.Namespace, default_pairs: list[str]) -> dict[str
     return download_universe(client, pairs, start, end, args.out, args.years_per_chunk)
 
 
+def challenge_table(res: dict[str, Any]) -> str:
+    """Compact text table of a challenge simulation."""
+    phases = [p["name"] for p in res["rules"]["phases"]]
+    head = ["risk %", *[f"pass {p}" for p in phases], "pass all", "fail day", "fail DD", "timeout", "days", "keep funded"]
+    lines = [" | ".join(head), " | ".join("---" for _ in head)]
+    for r in res["by_risk"]:
+        pct = lambda v: "-" if v is None else f"{100 * v:.0f}%"  # noqa: E731
+        lines.append(" | ".join([f"{r['risk_per_trade_pct']:g}", *[pct(r[f"p_pass_{p}"]) for p in phases],
+                                 pct(r["p_pass_challenge"]), pct(r["p_fail_daily_loss"]), pct(r["p_fail_drawdown"]),
+                                 pct(r["p_timeout"]), "-" if r["median_days_to_pass"] is None else f"{r['median_days_to_pass']:.0f}",
+                                 pct(r.get("p_keep_funded"))]))
+    lines.append(f"\nbest risk per trade: {res['best_risk_per_trade_pct']:g}% "
+                 f"(pass {100 * res['best_p_pass']:.0f}%), {res['n_sims']} simulations on {res['history_days']} days, "
+                 f"edge haircut {100 * res['edge_haircut']:.0f}%")
+    return "\n".join(lines) + "\n"
+
+
 def _print(data: Any) -> None:
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
 
@@ -132,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("tree_id")
     pine = sub.add_parser("pine", help="Pine Script v6 export of a tree")
     pine.add_argument("tree_id")
+    chal = sub.add_parser("challenge", help="prop-firm challenge simulator for a tree or a portfolio")
+    who = chal.add_mutually_exclusive_group(required=True)
+    who.add_argument("--tree")
+    who.add_argument("--portfolio")
     sub.add_parser("runs", help="list runs")
     sub.add_parser("indicators", help="print the indicator library as Markdown")
     cls = sub.add_parser("classify", help="strategy type of a tree (trend following, mean reversion...)")
@@ -169,6 +192,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "portfolio":
             out = build_and_report_portfolio(store, args.runs or None, cfg.portfolio)
             _print({k: out[k] for k in ("portfolio_id", "members", "report")} | {"result": out["result"]["splits"]})
+        elif args.command == "challenge":
+            res = (challenge_for_tree(store, args.tree) if args.tree
+                   else challenge_for_portfolio(store, args.portfolio))
+            sys.stdout.write(challenge_table(res))
         elif args.command == "indicators":
             sys.stdout.write(indicators_markdown())
     except FxgenError as exc:

@@ -172,10 +172,42 @@ class ValidationConfig(_Strict):
     n_finalists: int = Field(10, ge=1)
 
 
+class ChallengePhase(_Strict):
+    name: str
+    profit_target_pct: float = Field(gt=0)
+    max_days: int | None = Field(None, ge=1)
+    min_trading_days: int = Field(0, ge=0)
+
+
+class ChallengeConfig(_Strict):
+    """Prop-firm challenge simulator (bootstrap of daily returns, train + validation only)."""
+
+    phases: list[ChallengePhase] = Field(default_factory=lambda: [
+        ChallengePhase(name="phase 1", profit_target_pct=8.0, min_trading_days=4),
+        ChallengePhase(name="phase 2", profit_target_pct=5.0, min_trading_days=4),
+    ])
+    drawdown_mode: Literal["static", "trailing"] = "static"
+    no_limit_cap_days: int = Field(365, ge=20)
+    funded_days: int = Field(120, ge=0)
+    fee: float = Field(0.0, ge=0)
+    risk_grid: list[float] = Field(default_factory=lambda: [0.25, 0.5, 0.75, 1.0, 1.5, 2.0])
+    n_sims: int = Field(5000, ge=100)
+    block_days: int = Field(5, ge=1)
+    edge_haircut: float = Field(0.5, ge=0, le=1)
+
+    @field_validator("risk_grid")
+    @classmethod
+    def _positive(cls, v: list[float]) -> list[float]:
+        if not v or any(r <= 0 for r in v):
+            raise ValueError("risk_grid needs positive risks per trade (%)")
+        return sorted(set(v))
+
+
 class PropFirmConfig(_Strict):
     max_total_drawdown_pct: float = Field(10.0, gt=0)
     max_daily_loss_pct: float = Field(5.0, gt=0)
     min_risk_per_trade_pct: float = Field(0.25, gt=0)
+    challenge: ChallengeConfig = ChallengeConfig()
 
 
 class PortfolioConfig(_Strict):

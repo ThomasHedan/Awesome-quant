@@ -422,6 +422,38 @@ def get_portfolio(portfolio_id: Annotated[str, Field(pattern=r"^pf_\w+$")]) -> d
 
 @mcp.tool()
 @_errors
+def simulate_challenge(
+    tree_id: Annotated[str | None, Field(default=None, pattern=r"^[0-9a-f]{4,32}$")] = None,
+    portfolio_id: Annotated[str | None, Field(default=None, pattern=r"^pf_\w+$")] = None,
+    profit_targets_pct: Annotated[list[float] | None, Field(default=None, min_length=1, max_length=4)] = None,
+    max_days: Annotated[int | None, Field(default=None, ge=5)] = None,
+    drawdown_mode: Literal["static", "trailing"] | None = None,
+    risk_grid: Annotated[list[float] | None, Field(default=None, min_length=1, max_length=12)] = None,
+    edge_haircut: Annotated[float | None, Field(default=None, ge=0, le=1)] = None,
+    fee: Annotated[float | None, Field(default=None, ge=0)] = None,
+) -> dict[str, Any]:
+    """Prop-firm challenge simulator for a tree or a portfolio: probability to pass each phase and the whole
+    challenge, failure causes, days to pass and funded-account survival, for each risk per trade. Uses train +
+    validation days only. Omitted rules come from prop_firm.challenge in the config."""
+    if (tree_id is None) == (portfolio_id is None):
+        raise ConfigError("give exactly one of tree_id or portfolio_id")
+    base = base_config().prop_firm.challenge
+    update: dict[str, Any] = {k: v for k, v in {"drawdown_mode": drawdown_mode, "risk_grid": risk_grid,
+                                               "edge_haircut": edge_haircut, "fee": fee}.items() if v is not None}
+    if profit_targets_pct is not None or max_days is not None:
+        targets = profit_targets_pct or [p.profit_target_pct for p in base.phases]
+        update["phases"] = [{"name": f"phase {i + 1}", "profit_target_pct": t, "max_days": max_days,
+                             "min_trading_days": base.phases[0].min_trading_days if base.phases else 0}
+                            for i, t in enumerate(targets)]
+    challenge = type(base).model_validate({**base.model_dump(), **update})
+    st = store()
+    res = (pipeline.challenge_for_tree(st, tree_id, None, challenge) if tree_id
+           else pipeline.challenge_for_portfolio(st, portfolio_id, challenge))  # type: ignore[arg-type]
+    return _round(res)
+
+
+@mcp.tool()
+@_errors
 def list_runs(limit: Annotated[int, Field(ge=1, le=100)] = 20) -> dict[str, Any]:
     """Recent runs with their status and trial counts."""
     st = store()

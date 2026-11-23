@@ -16,12 +16,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from fxgen.analysis.challenge import daily_series, simulate_challenge
 from fxgen.analysis.classify import classify
 from fxgen.analysis.portfolio import build_portfolio
 from fxgen.backtest.metrics import daily_r, per_year
 from fxgen.backtest.runner import BacktestResult, run_backtest
 from fxgen.conditions.builder import Condition
-from fxgen.config import Config, PortfolioConfig, Timeframe
+from fxgen.config import ChallengeConfig, Config, PortfolioConfig, Timeframe
 from fxgen.data.loader import PairData, load_universe
 from fxgen.data.splits import split_period
 from fxgen.errors import FxgenError, HoldoutLockedError, TreeError
@@ -248,6 +249,43 @@ def build_and_report_portfolio(store: Store, run_ids: list[str] | None = None,
                             cfg.resolve(cfg.storage.output_dir) / "portfolios" / f"{portfolio['portfolio_id']}.html")
     portfolio["report"] = str(path)
     return portfolio
+
+
+def _insample_series(store: Store, run_id: str, tree_id: str) -> tuple[pd.Series, pd.Series]:
+    cfg = run_config(store, run_id)
+    period = split_period(cfg.splits, "train+validation")
+    trades = store.get_trades(run_id, tree_id)
+    trades = trades[trades["split"].isin(["train", "validation"])]
+    return daily_series(trades, period)
+
+
+def challenge_for_tree(store: Store, tree_id: str, run_id: str | None = None,
+                       challenge: ChallengeConfig | None = None) -> dict[str, Any]:
+    """Prop-firm challenge simulation of one tree (train + validation days only)."""
+    run_id = run_id or store.run_of_tree(tree_id)
+    if run_id is None:
+        raise TreeError(f"tree {tree_id} is not attached to any run")
+    cfg = run_config(store, run_id)
+    daily, traded = _insample_series(store, run_id, tree_id)
+    return {"tree_id": tree_id, "run_id": run_id,
+            **simulate_challenge(daily, traded, cfg.prop_firm, cfg.seed, challenge)}
+
+
+def challenge_for_portfolio(store: Store, portfolio_id: str, challenge: ChallengeConfig | None = None) -> dict[str, Any]:
+    """Challenge simulation of a stored portfolio: members trade at ``risk x weight``."""
+    portfolio = store.get_portfolio(portfolio_id)
+    members = portfolio["members"]
+    cfg = run_config(store, members[0]["run_id"])
+    daily: pd.Series | None = None
+    traded: pd.Series | None = None
+    for m in members:
+        d, t = _insample_series(store, m["run_id"], m["tree_id"])
+        d = d * m["weight"]
+        daily = d if daily is None else daily.add(d, fill_value=0.0)
+        traded = t if traded is None else (traded | t.reindex(traded.index, fill_value=False))
+    assert daily is not None and traded is not None
+    return {"portfolio_id": portfolio_id, "members": [m["tree_id"] for m in members],
+            **simulate_challenge(daily, traded, cfg.prop_firm, cfg.seed, challenge)}
 
 
 def generate_report(store: Store, tree_id: str, run_id: str | None = None) -> Path:
