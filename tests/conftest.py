@@ -21,6 +21,11 @@ def make_config(data_dir: Path, db_path: Path, **overrides: object) -> Config:
             "holdout_start": "2019-07-01",
             "end": "2019-12-31",
         },
+        "conditions": {
+            "percentiles": [10, 25, 50, 75, 90],
+            "exclude_features": ["*hma*", "*alma*", "*dema*", "*tema*", "*kama*", "*wma*", "sma*", "macd_*_*",
+                                 "stoch_slow*", "*_rank*", "bars_since_*", "dist_high*", "dist_low*", "fisher*"],
+        },
         "ga": {"population_size": 30, "generations": 3, "n_jobs": 1, "elite_size": 2},
         "fitness": {"min_trades_total": 20, "min_trades_per_pair": 2, "n_subperiods": 2, "min_positive_subperiods": 1},
         "validation": {

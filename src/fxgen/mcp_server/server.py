@@ -160,7 +160,7 @@ def get_rankings(
         df = df[df["holdout_sharpe"].notna()]
     if survivors_only:
         df = df[df["survives"] == True]  # noqa: E712
-    cols = ["tree_id", "survives", "finalist", "n_internal", "train_fitness", f"{stage}_sharpe", f"{stage}_dsr",
+    cols = ["tree_id", "survives", "finalist", "strategy_type", "n_internal", "train_fitness", f"{stage}_sharpe", f"{stage}_dsr",
             f"{stage}_profit_factor", f"{stage}_max_dd_pct", "wf_positive_share", "sensitivity_worst_ratio", "mc_max_risk_pct"]
     cols = list(dict.fromkeys(c for c in cols if c in df.columns))
     rows = df[cols].head(top_n).astype(object).where(df[cols].head(top_n).notna(), None).to_dict("records")
@@ -372,10 +372,61 @@ def generate_report(tree_id: TreeId, run_id: RunId = None) -> dict[str, Any]:
 
 @mcp.tool()
 @_errors
+def classify_strategy(tree_id: TreeId, run_id: RunId = None) -> dict[str, Any]:
+    """Strategy type of a tree (trend following, momentum, breakout, mean reversion or mixed), from its
+    rules (which indicators, with or against the move) and its trades (entries vs the prior 1-day / 5-day move)."""
+    st = store()
+    rid = _tree_run(st, tree_id, run_id)
+    result = pipeline.classify_stored(st, tree_id, rid)
+    st.save_classification(rid, tree_id, result)
+    return {"run_id": rid, "tree_id": tree_id, **_round(result)}
+
+
+@mcp.tool()
+@_errors
+def build_portfolio(
+    run_ids: Annotated[list[str] | None, Field(default=None, max_length=50)] = None,
+    max_strategies: Annotated[int | None, Field(default=None, ge=1, le=30)] = None,
+    max_correlation: Annotated[float | None, Field(default=None, gt=0, le=1)] = None,
+    select_by: Literal["validation_dsr", "validation_sharpe", "train_fitness"] | None = None,
+    max_per_type: Annotated[int | None, Field(default=None, ge=1)] = None,
+    weighting: Literal["equal", "inverse_vol"] | None = None,
+    survivors_only: bool | None = None,
+) -> dict[str, Any]:
+    """Aggregate the best strategies that are not correlated with each other (daily R, train + validation).
+    Omitted settings come from the `portfolio` section of the config. Never reads the holdout."""
+    st = store()
+    overrides = {k: v for k, v in {"max_strategies": max_strategies, "max_correlation": max_correlation,
+                                   "select_by": select_by, "max_per_type": max_per_type, "weighting": weighting,
+                                   "survivors_only": survivors_only}.items() if v is not None}
+    settings = base_config().portfolio.model_copy(update=overrides)
+    out = pipeline.build_and_report_portfolio(st, run_ids, type(settings).model_validate(settings.model_dump()))
+    r = out["result"]
+    return {
+        "portfolio_id": out["portfolio_id"], "report": out["report"],
+        "members": _round([{k: m[k] for k in ("tree_id", "strategy_type", "weight", "risk_per_trade_pct",
+                                              "validation_sharpe", "validation_dsr")} for m in out["members"]]),
+        "splits": _round(r["splits"]), "mean_abs_correlation": _round(r["mean_abs_correlation"]),
+        "prop_firm": _round({k: v for k, v in r["prop_firm"].items() if k != "note"}),
+        "types": r["types"], "pool_size": r["pool_size"], "n_rejected": len(r["rejected"]),
+    }
+
+
+@mcp.tool()
+@_errors
+def get_portfolio(portfolio_id: Annotated[str, Field(pattern=r"^pf_\w+$")]) -> dict[str, Any]:
+    """A stored portfolio: settings, members, metrics by split, correlation matrix and prop-firm budget."""
+    p = store().get_portfolio(portfolio_id)
+    return _round(p)
+
+
+@mcp.tool()
+@_errors
 def list_runs(limit: Annotated[int, Field(ge=1, le=100)] = 20) -> dict[str, Any]:
     """Recent runs with their status and trial counts."""
     st = store()
-    return {"runs": st.list_runs(limit), "total_trials": st.total_trials(), "holdout_accesses": st.holdout_trial_count()}
+    return {"runs": st.list_runs(limit), "portfolios": st.list_portfolios(limit), "total_trials": st.total_trials(),
+            "holdout_accesses": st.holdout_trial_count()}
 
 
 def main() -> None:

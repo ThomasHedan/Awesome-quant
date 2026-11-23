@@ -19,7 +19,7 @@ Python 3.11+ et [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync --extra dev
-uv run pytest            # ~90 tests, ~3 min
+uv run pytest            # ~100 tests, ~15 min
 ```
 
 ## Démarrage rapide sur données synthétiques
@@ -150,6 +150,42 @@ conditions:
 pas du nombre de seuils. Pour 12 paires en H1 sur 10 ans, comptez environ 3 Go en régime établi et 4,5 Go
 au pic. Les filtres ci-dessus réduisent ces chiffres.
 
+## Type de stratégie et portefeuille décorrélé
+
+### Identification du type
+
+Chaque candidat reçoit une étiquette : `trend following`, `momentum`, `breakout`, `mean reversion` ou
+`mixed`. Elle apparaît dans le classement, dans `get_rankings` / `get_tree` et via `fxgen classify TREE_ID`
+ou l'outil MCP `classify_strategy`. Deux lectures sont combinées :
+
+- **Structure de l'arbre.** Chaque condition sur le chemin d'une feuille LONG / SHORT est lue « dans le sens
+  du mouvement » ou « contre lui ». Chaque indicateur a un style (tendance, momentum, cassure, filtre) et une
+  polarité. Acheter quand `dist_ema50 > p70` est du suivi de tendance ; acheter quand `rsi14 > p20` est faux
+  (RSI très bas) est du retour à la moyenne. Volatilité, calendrier et patterns neutres sont des filtres,
+  indiqués en tags.
+- **Comportement des trades.** À chaque entrée, le trade va-t-il dans le sens du mouvement de la veille et des
+  5 derniers jours (`move_1d`, `move_5d`) ? Le profil de gains (taux de réussite, gain moyen / perte moyenne)
+  est aussi donné.
+
+La confiance augmente quand les deux lectures concordent ; un désaccord est signalé.
+
+### Agrégateur de stratégies non corrélées
+
+`fxgen portfolio`, ou l'outil MCP `build_portfolio`, assemble un portefeuille :
+
+1. il part des arbres ayant survécu à la batterie, sur un ou plusieurs runs ;
+2. il les trie par DSR de validation ;
+3. il les ajoute un par un tant que la corrélation des rendements journaliers (train + validation) avec chaque
+   membre reste sous `max_correlation`, avec au plus `max_per_type` stratégies du même type ;
+4. il calcule les pondérations (égales ou inverses de la volatilité), les métriques par split, la corrélation
+   moyenne, le ratio de diversification, et un Monte Carlo sur les journées du portefeuille ;
+5. il en déduit le risque maximal par trade et par stratégie compatible avec le drawdown max et la perte
+   journalière de la prop firm.
+
+Le rapport HTML est écrit dans `output/portfolios/`. La sélection n'utilise que le train et la validation.
+Les chiffres holdout n'apparaissent que si chaque membre a déjà été évalué par l'étape holdout de son run :
+construire un portefeuille ne lit jamais le holdout. Les réglages sont dans la section `portfolio` du YAML.
+
 ## Représentation des arbres
 
 ```json
@@ -223,7 +259,8 @@ Redémarrez Claude Desktop. Si `uv` n'est pas trouvé, mettez son chemin absolu 
 | `get_tree(tree_id)` | `run_robustness(tree_id)` (jamais sur le holdout) |
 | `get_metrics(tree_id, split, pair)` | `export_pine(tree_id)` |
 | `get_trades(tree_id, pair, limit, offset)` | `generate_report(tree_id)` |
-| `get_robustness(tree_id)`, `compare_trees(tree_ids)`, `list_runs()` | |
+| `get_robustness(tree_id)`, `compare_trees(tree_ids)`, `list_runs()` | `classify_strategy(tree_id)` |
+| `get_portfolio(portfolio_id)` | `build_portfolio(run_ids, max_strategies, max_correlation, select_by, max_per_type, weighting)` |
 
 L'étape holdout finale n'est volontairement pas exposée en MCP : elle se lance en CLI (`fxgen holdout`),
 pour que ce soit une décision consciente.
@@ -233,6 +270,7 @@ Exemples de demandes à Claude :
 - « Montre-moi le top 10 holdout trié par DSR. »
 - « Compare les trois premiers arbres et dis-moi lesquels sont décorrélés. »
 - « Teste cet arbre modifié sur la validation, uniquement sur EURUSD et GBPUSD. »
+- « Construis un portefeuille de 4 stratégies avec une corrélation max de 0,4 et au plus une par type. »
 
 ## Architecture
 
@@ -248,7 +286,8 @@ src/fxgen/
   backtest/            moteur numba (sorties dépendantes du chemin), coûts, métriques
   ga/                  opérateurs, fitness robuste, partage de fitness, évolution parallèle
   validation/          walk-forward, permutation, DSR, sensibilité, Monte Carlo, holdout, batterie
-  reporting/           classements, rapport HTML, export Pine
+  analysis/            type de stratégie, portefeuille décorrélé
+  reporting/           classements, rapports HTML (arbre, portefeuille), export Pine
   storage/db.py        SQLite (runs, arbres, métriques, trades, robustesse, jobs, journal d'essais)
   pipeline.py          orchestration
   jobs.py              worker des runs en tâche de fond

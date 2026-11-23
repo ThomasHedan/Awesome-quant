@@ -122,6 +122,16 @@ prop_firm:
   # Monte Carlo check: the 95% drawdown must stay under the limit at this risk per trade.
   min_risk_per_trade_pct: 0.25
 
+# Aggregator of decorrelated strategies (fxgen portfolio / MCP build_portfolio).
+portfolio:
+  max_strategies: 5
+  max_correlation: 0.5          # max |correlation| of daily R between two members (train + validation)
+  select_by: validation_dsr     # validation_dsr | validation_sharpe | train_fitness
+  min_validation_sharpe: 0.0
+  survivors_only: true          # only trees that passed the whole robustness battery
+  max_per_type: 2               # max strategies of the same type (trend following, mean reversion...); null = no cap
+  weighting: equal              # equal | inverse_vol
+
 storage:
   database: output/fxgen.db
   output_dir: output

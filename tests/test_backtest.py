@@ -146,3 +146,13 @@ def test_run_backtest_aggregates_pairs(cfg: Config) -> None:
     assert set(result.per_pair) == set(cfg.data.pairs)
     assert result.metrics["n_trades"] == sum(m["n_trades"] for m in result.per_pair.values())
     assert set(result.trades["branch"]) <= {"T", "F"}
+
+
+def test_time_helpers_ignore_timestamp_resolution() -> None:
+    from fxgen.backtest.engine import bars_per_day
+
+    ns = pd.date_range("2020-01-06", periods=100, freq="1h", tz="UTC")
+    us = ns.as_unit("us")
+    assert bars_per_day(ns) == bars_per_day(us) == 24
+    assert bars_per_day(pd.date_range("2020-01-06", periods=10, freq="4h", tz="UTC").as_unit("s")) == 6
+    np.testing.assert_array_equal(rollover_units(ns), rollover_units(us))

@@ -4,45 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tree {{ d.tree_id }}</title>
-<style>
-:root {
-  color-scheme: light;
-  --surface: #fcfcfb; --surface-2: #f3f2ef; --border: #e2e0da;
-  --text: #0b0b0b; --text-2: #52514e; --muted: #7b7a74;
-  --good: #008300; --bad: #c92a2a;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --surface: #1a1a19; --surface-2: #232321; --border: #3a3936;
-    --text: #f0efec; --text-2: #c3c2b7; --muted: #9a998f;
-    --good: #0ca30c; --bad: #e66767;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --surface: #1a1a19; --surface-2: #232321; --border: #3a3936;
-  --text: #f0efec; --text-2: #c3c2b7; --muted: #9a998f;
-  --good: #0ca30c; --bad: #e66767;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.5 Inter, system-ui, sans-serif; }
-main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 16px; margin: 32px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-.sub { color: var(--text-2); margin: 0 0 16px; }
-pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; }
-.scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
-th:first-child, td:first-child { text-align: left; }
-th { color: var(--text-2); font-weight: 600; }
-.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid currentColor; }
-.ok { color: var(--good); } .ko { color: var(--bad); }
-.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
-.chart { border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; padding: 4px; }
-details summary { cursor: pointer; color: var(--text-2); }
-</style>
+{% include "_style.html.j2" %}
 </head>
 <body>
 <main>

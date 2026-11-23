@@ -162,13 +162,31 @@ def rollover_units(index: pd.DatetimeIndex) -> np.ndarray:
     weights = np.where(instants.day_of_week == 2, 3.0, 1.0)
     weights[instants.day_of_week >= 5] = 0.0
     cum = np.concatenate([[0.0], np.cumsum(weights)])
-    return cum[np.searchsorted(instants.asi8, index.asi8, side="right")]
+    return cum[instants.searchsorted(index, side="right")]
 
 
 TRADE_COLUMNS = [
     "pair", "entry_time", "exit_time", "direction", "entry_price", "exit_price", "bars_held",
-    "gross_pips", "cost_pips", "net_pips", "r_multiple", "exit_reason", "leaf",
+    "gross_pips", "cost_pips", "net_pips", "r_multiple", "exit_reason", "leaf", "move_1d", "move_5d",
 ]
+
+
+def bars_per_day(index: pd.DatetimeIndex) -> int:
+    """Typical number of bars per day of an index (24 for H1, 6 for H4, 1 for D1)."""
+    if len(index) < 2:
+        return 1
+    step = pd.Series(index[: min(len(index), 500)]).diff().median()
+    return max(1, round(pd.Timedelta(days=1) / step))
+
+
+def prior_move(data: PairSplit, decision_idx: np.ndarray, bars: int) -> np.ndarray:
+    """Price change over ``bars`` bars up to the decision bar, in ATR units (NaN when unknown)."""
+    start = decision_idx - bars
+    valid = start >= 0
+    out = np.full(decision_idx.shape[0], np.nan)
+    d, s0 = decision_idx[valid], start[valid]
+    out[valid] = (data.close[d] - data.close[s0]) / data.atr[d]
+    return out
 
 
 def simulate_pair(
@@ -196,6 +214,8 @@ def simulate_pair(
     cost = costs.spread_for(data.pair) + costs.commission_pips_round_turn - swap
     net = gross - cost
     stop_pips = raw[:, 5] / pip
+    per_day = bars_per_day(data.index)
+    decision_idx = entry_idx - 1
     return pd.DataFrame(
         {
             "pair": data.pair,
@@ -211,5 +231,7 @@ def simulate_pair(
             "r_multiple": net / stop_pips,
             "exit_reason": [EXIT_REASONS[int(r)] for r in raw[:, 6]],
             "leaf": raw[:, 7].astype(np.int16),
+            "move_1d": prior_move(data, decision_idx, per_day),
+            "move_5d": prior_move(data, decision_idx, 5 * per_day),
         }
     )

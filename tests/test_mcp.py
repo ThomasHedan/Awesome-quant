@@ -40,7 +40,8 @@ def test_tools_are_registered() -> None:
     names = {t.name for t in asyncio.run(server.mcp.list_tools())}
     assert {"list_datasets", "list_conditions", "get_rankings", "get_tree", "get_metrics", "get_trades",
             "get_robustness", "compare_trees", "run_evolution", "get_job_status", "cancel_job", "backtest_tree",
-            "run_robustness", "export_pine", "generate_report"} <= names
+            "run_robustness", "export_pine", "generate_report", "classify_strategy", "build_portfolio",
+            "get_portfolio"} <= names
 
 
 def test_read_tools(env: dict[str, Any]) -> None:
@@ -74,6 +75,17 @@ def test_action_tools(env: dict[str, Any]) -> None:
     assert "warning" not in out and set(out["per_pair"]) == {"EURUSD"}
     held = call("backtest_tree", {"tree_json": tree, "split": "holdout"})
     assert "holdout accessed and logged" in held["warning"]
+
+
+def test_classify_and_portfolio_tools(env: dict[str, Any]) -> None:
+    c = call("classify_strategy", {"tree_id": env["tree_id"]})
+    assert c["label"] and "structure" in c
+    pf = call("build_portfolio", {"max_strategies": 2, "survivors_only": False, "max_correlation": 0.9})
+    assert 1 <= len(pf["members"]) <= 2 and Path(pf["report"]).exists()
+    stored = call("get_portfolio", {"portfolio_id": pf["portfolio_id"]})
+    assert stored["members"][0]["tree_id"] == pf["members"][0]["tree_id"]
+    with pytest.raises(ToolError):
+        call("build_portfolio", {"max_correlation": 2})
 
 
 def test_validation_errors(env: dict[str, Any]) -> None:

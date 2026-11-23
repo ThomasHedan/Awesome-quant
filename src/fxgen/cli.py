@@ -18,7 +18,14 @@ from fxgen.errors import FxgenError
 from fxgen.indicators.base import all_features
 from fxgen.indicators.time import CALENDAR_RULES
 from fxgen.logging_setup import setup_logging
-from fxgen.pipeline import generate_report, run_holdout, run_pipeline, write_pine
+from fxgen.pipeline import (
+    build_and_report_portfolio,
+    classify_stored,
+    generate_report,
+    run_holdout,
+    run_pipeline,
+    write_pine,
+)
 from fxgen.storage.db import Store
 
 logger = logging.getLogger("fxgen")
@@ -104,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     pine.add_argument("tree_id")
     sub.add_parser("runs", help="list runs")
     sub.add_parser("indicators", help="print the indicator library as Markdown")
+    cls = sub.add_parser("classify", help="strategy type of a tree (trend following, mean reversion...)")
+    cls.add_argument("tree_id")
+    pf = sub.add_parser("portfolio", help="aggregate the best decorrelated strategies")
+    pf.add_argument("--runs", nargs="*", help="run ids (default: every finished run)")
 
     args = parser.parse_args(argv)
     setup_logging(logging.DEBUG if args.verbose else logging.INFO)
@@ -128,6 +139,11 @@ def main(argv: list[str] | None = None) -> int:
             _print({"pine": str(write_pine(store, args.tree_id))})
         elif args.command == "runs":
             _print(store.list_runs())
+        elif args.command == "classify":
+            _print(classify_stored(store, args.tree_id))
+        elif args.command == "portfolio":
+            out = build_and_report_portfolio(store, args.runs or None, cfg.portfolio)
+            _print({k: out[k] for k in ("portfolio_id", "members", "report")} | {"result": out["result"]["splits"]})
         elif args.command == "indicators":
             sys.stdout.write(indicators_markdown())
     except FxgenError as exc:

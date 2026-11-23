@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfolio {{ p.portfolio_id }}</title>
+{% include "_style.html.j2" %}
+</head>
+<body>
+<main>
+<h1>Portfolio {{ p.portfolio_id }}</h1>
+<p class="sub">{{ p.members | length }} strategies from {{ p.runs | length }} run(s) &middot; pool of {{ r.pool_size }} eligible trees
+&middot; selected by {{ p.settings.select_by }}, |corr| &le; {{ p.settings.max_correlation }}, weighting {{ p.settings.weighting }}</p>
+<p class="sub">Selection used train and validation only.
+{% if r.holdout_available %}Holdout figures come from results already stored for every member.{% else %}Holdout: not available for every member (run the holdout stage of their runs).{% endif %}</p>
+
+<h2>Members</h2>
+<div class="scroll"><table>
+<tr><th>tree</th><th>type</th><th>weight</th><th>risk / trade %</th><th>validation Sharpe</th><th>validation DSR</th><th>run</th></tr>
+{% for m in p.members %}<tr><td>{{ m.tree_id }}</td><td>{{ m.strategy_type }}</td><td>{{ m.weight | fmt }}</td><td>{{ m.risk_per_trade_pct | fmt }}</td>
+<td>{{ m.validation_sharpe | fmt }}</td><td>{{ m.validation_dsr | fmt }}</td><td>{{ m.run_id }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Portfolio by split</h2>
+<div class="scroll"><table>
+<tr><th>metric</th>{% for s in r.splits %}<th>{{ s }}</th>{% endfor %}</tr>
+{% for k in metric_keys %}<tr><td>{{ k }}</td>{% for s in r.splits %}<td>{{ r.splits[s][k] | fmt }}</td>{% endfor %}</tr>{% endfor %}
+</table></div>
+
+{% for chart in charts %}<div class="chart">{{ chart | safe }}</div>{% endfor %}
+
+<h2>Prop firm (train + validation)</h2>
+<div class="scroll"><table>
+<tr><th>measure</th><th>value</th></tr>
+<tr><td>max drawdown % at {{ conf }}</td><td>{{ r.prop_firm.max_dd_pct_at_conf | fmt }}</td></tr>
+<tr><td>median max drawdown %</td><td>{{ r.prop_firm.max_dd_pct_median | fmt }}</td></tr>
+<tr><td>worst day %</td><td>{{ r.prop_firm.worst_day_pct | fmt }}</td></tr>
+<tr><td>risk scale that reaches the limits</td><td>{{ r.prop_firm.risk_scale_limit | fmt }}</td></tr>
+{% for t, v in r.prop_firm.max_risk_per_trade_pct_per_member.items() %}<tr><td>max risk / trade % for {{ t }}</td><td>{{ v | fmt }}</td></tr>{% endfor %}
+</table></div>
+
+<h2>Members rules</h2>
+{% for m in p.members %}<h3>{{ m.tree_id }} &middot; {{ m.strategy_type }}</h3><pre>{{ m.rules }}</pre>{% endfor %}
+
+{% if r.rejected %}<details><summary>Rejected candidates ({{ r.rejected | length }})</summary>
+<div class="scroll"><table><tr><th>tree</th><th>reason</th></tr>
+{% for x in r.rejected %}<tr><td>{{ x.tree_id }}</td><td>{{ x.reason }}</td></tr>{% endfor %}</table></div></details>{% endif %}
+</main>
+</body>
+</html>

@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 
 RANK_COLUMNS = [
-    "tree_id", "survives", "finalist", "depth", "n_internal",
+    "tree_id", "survives", "finalist", "strategy_type", "depth", "n_internal",
     "train_fitness", "train_sharpe", "train_dsr", "train_n_trades",
     "validation_sharpe", "validation_dsr", "validation_profit_factor", "validation_max_dd_pct",
     "holdout_sharpe", "holdout_dsr", "holdout_profit_factor", "holdout_max_dd_pct",

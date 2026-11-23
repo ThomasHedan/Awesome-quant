@@ -88,3 +88,33 @@ def test_store_errors(tmp_path: Path) -> None:
     with pytest.raises(StorageError):
         store.get_tree("abcd")
     assert store.latest_run() is None and store.total_trials() == 0
+
+
+def test_classification_and_portfolio(finished: tuple[Config, Store, str]) -> None:
+    from fxgen.config import PortfolioConfig
+    from fxgen.pipeline import build_and_report_portfolio, classify_stored
+
+    cfg, store, run_id = finished
+    rows = store.ranking_rows(run_id)
+    assert all(r["strategy_type"] for r in rows)
+    one = classify_stored(store, rows[0]["tree_id"], run_id)
+    assert one["label"] in {"trend following", "momentum", "breakout", "mean reversion", "mixed"}
+    assert "with_move_5d" in one["behaviour"]
+
+    holdout_before = store.holdout_trial_count()
+    settings = PortfolioConfig(max_strategies=3, max_correlation=0.6, survivors_only=False, max_per_type=2,
+                               min_validation_sharpe=-10)
+    pf = build_and_report_portfolio(store, [run_id], settings)
+    members = pf["members"]
+    assert 1 <= len(members) <= 3
+    corr = pf["result"]["correlation"]
+    for a in corr:
+        for b in corr:
+            if a != b:
+                assert abs(corr[a][b]) <= 0.6 + 1e-9
+    types = [m["strategy_type"] for m in members]
+    assert all(types.count(t) <= 2 for t in types)
+    assert store.holdout_trial_count() == holdout_before
+    assert Path(pf["report"]).exists()
+    assert store.get_portfolio(pf["portfolio_id"])["members"][0]["tree_id"] == members[0]["tree_id"]
+    assert set(pf["result"]["splits"]) >= {"train", "validation"}

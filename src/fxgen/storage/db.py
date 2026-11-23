@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS run_trees (
     is_candidate INTEGER DEFAULT 0,
     is_finalist INTEGER DEFAULT 0,
     survives INTEGER,
+    strategy_type TEXT,
+    classification_json TEXT,
     PRIMARY KEY (run_id, tree_id)
 );
 CREATE TABLE IF NOT EXISTS metrics (
@@ -91,7 +93,9 @@ CREATE TABLE IF NOT EXISTS trades (
     cost_pips REAL,
     r_multiple REAL,
     exit_reason TEXT,
-    branch TEXT
+    branch TEXT,
+    move_1d REAL,
+    move_5d REAL
 );
 CREATE INDEX IF NOT EXISTS trades_tree ON trades (tree_id, split, pair);
 CREATE TABLE IF NOT EXISTS robustness (
@@ -128,6 +132,13 @@ CREATE TABLE IF NOT EXISTS holdout_access (
     source TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS portfolios (
+    portfolio_id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    settings_json TEXT NOT NULL,
+    members_json TEXT NOT NULL,
+    result_json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS jobs (
     job_id TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
@@ -143,6 +154,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 """
 
 DSR_TRIAL_SOURCES = ("ga", "manual")
+_ADDED_COLUMNS = [
+    ("trades", "move_1d", "REAL"),
+    ("trades", "move_5d", "REAL"),
+    ("run_trees", "strategy_type", "TEXT"),
+    ("run_trees", "classification_json", "TEXT"),
+]
 SPLIT_ORDER = ("train", "validation", "holdout")
 
 
@@ -163,6 +180,12 @@ def _clean(value: Any) -> Any:
     return value
 
 
+def _nullable(df: pd.DataFrame, column: str) -> list[float | None]:
+    if column not in df:
+        return [None] * len(df)
+    return [None if pd.isna(v) else float(v) for v in df[column]]
+
+
 def dumps(value: Any) -> str:
     return json.dumps(_clean(value), sort_keys=True)
 
@@ -175,6 +198,10 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
+            for table, column, kind in _ADDED_COLUMNS:
+                existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -287,13 +314,14 @@ class Store:
             if not trades.empty:
                 t = trades
                 conn.executemany(
-                    "INSERT INTO trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     zip(
                         [run_id] * len(t), [tree_id] * len(t), [split] * len(t), t["pair"],
                         t["entry_time"].astype(str), t["exit_time"].astype(str), t["direction"].astype(int).tolist(),
                         t["entry_price"].tolist(), t["exit_price"].tolist(), t["bars_held"].astype(int).tolist(),
                         t["net_pips"].tolist(), t["cost_pips"].tolist(), t["r_multiple"].tolist(), t["exit_reason"],
                         t["branch"] if "branch" in t else [None] * len(t),
+                        _nullable(t, "move_1d"), _nullable(t, "move_5d"),
                     ),
                 )
             if not yearly.empty:
@@ -399,6 +427,34 @@ class Store:
         return [json.loads(r["condition_json"]) for r in self.query(
             "SELECT condition_json FROM run_conditions WHERE run_id = ?", (run_id,))]
 
+    def save_classification(self, run_id: str, tree_id: str, classification: dict[str, Any]) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE run_trees SET strategy_type = ?, classification_json = ? WHERE run_id = ? AND tree_id = ?",
+                (classification["label"], dumps(classification), run_id, tree_id),
+            )
+
+    def get_classification(self, run_id: str, tree_id: str) -> dict[str, Any] | None:
+        rows = self.query("SELECT classification_json FROM run_trees WHERE run_id = ? AND tree_id = ?", (run_id, tree_id))
+        return json.loads(rows[0]["classification_json"]) if rows and rows[0]["classification_json"] else None
+
+    def save_portfolio(self, portfolio_id: str, settings: dict[str, Any], members: list[dict[str, Any]],
+                       result: dict[str, Any]) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO portfolios VALUES (?, ?, ?, ?, ?)",
+                         (portfolio_id, now(), dumps(settings), dumps(members), dumps(result)))
+
+    def get_portfolio(self, portfolio_id: str) -> dict[str, Any]:
+        rows = self.query("SELECT * FROM portfolios WHERE portfolio_id = ?", (portfolio_id,))
+        if not rows:
+            raise StorageError(f"unknown portfolio {portfolio_id!r}")
+        row = rows[0]
+        return {"portfolio_id": portfolio_id, "created_at": row["created_at"], "settings": json.loads(row["settings_json"]),
+                "members": json.loads(row["members_json"]), "result": json.loads(row["result_json"])}
+
+    def list_portfolios(self, limit: int = 20) -> list[dict[str, Any]]:
+        return self.query("SELECT portfolio_id, created_at FROM portfolios ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,))
+
     # trial ledger and holdout --------------------------------------------
 
     def log_trials(self, run_id: str | None, source: str, n_trials: int, note: str = "") -> None:
@@ -432,7 +488,7 @@ class Store:
     def ranking_rows(self, run_id: str) -> list[dict[str, Any]]:
         """One row per candidate tree with its key metrics on every split."""
         trees = self.query(
-            "SELECT rt.tree_id, rt.train_fitness, rt.is_finalist, rt.survives, t.depth, t.n_internal, t.rules "
+            "SELECT rt.tree_id, rt.train_fitness, rt.is_finalist, rt.survives, rt.strategy_type, t.depth, t.n_internal, t.rules "
             "FROM run_trees rt JOIN trees t USING (tree_id) WHERE rt.run_id = ? AND rt.is_candidate = 1",
             (run_id,),
         )
@@ -452,7 +508,8 @@ class Store:
             rep = robust.get(t["tree_id"], {})
             rows.append({
                 "tree_id": t["tree_id"], "survives": None if t["survives"] is None else bool(t["survives"]),
-                "finalist": bool(t["is_finalist"]), "depth": t["depth"], "n_internal": t["n_internal"],
+                "finalist": bool(t["is_finalist"]), "strategy_type": t["strategy_type"],
+                "depth": t["depth"], "n_internal": t["n_internal"],
                 "train_fitness": t["train_fitness"], **by_tree.get(t["tree_id"], {}),
                 "wf_positive_share": rep.get("walkforward", {}).get("positive_share"),
                 "sensitivity_worst_ratio": rep.get("sensitivity", {}).get("worst_ratio"),

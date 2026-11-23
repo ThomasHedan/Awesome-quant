@@ -178,6 +178,18 @@ class PropFirmConfig(_Strict):
     min_risk_per_trade_pct: float = Field(0.25, gt=0)
 
 
+class PortfolioConfig(_Strict):
+    """Selection of decorrelated strategies (validation data only, never the holdout)."""
+
+    max_strategies: int = Field(5, ge=1, le=30)
+    max_correlation: float = Field(0.5, gt=0, le=1)
+    select_by: Literal["validation_dsr", "validation_sharpe", "train_fitness"] = "validation_dsr"
+    min_validation_sharpe: float = 0.0
+    survivors_only: bool = True
+    max_per_type: int | None = Field(2, ge=1)
+    weighting: Literal["equal", "inverse_vol"] = "equal"
+
+
 class StorageConfig(_Strict):
     database: str = "output/fxgen.db"
     output_dir: str = "output"
@@ -195,6 +207,7 @@ class Config(_Strict):
     fitness: FitnessConfig = FitnessConfig()
     validation: ValidationConfig = ValidationConfig()
     prop_firm: PropFirmConfig = PropFirmConfig()
+    portfolio: PortfolioConfig = PortfolioConfig()
     storage: StorageConfig = StorageConfig()
 
     def resolve(self, relative: str) -> Path:

@@ -16,9 +16,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from fxgen.analysis.classify import classify
+from fxgen.analysis.portfolio import build_portfolio
 from fxgen.backtest.metrics import daily_r, per_year
 from fxgen.backtest.runner import BacktestResult, run_backtest
-from fxgen.config import Config, Timeframe
+from fxgen.conditions.builder import Condition
+from fxgen.config import Config, PortfolioConfig, Timeframe
 from fxgen.data.loader import PairData, load_universe
 from fxgen.data.splits import split_period
 from fxgen.errors import FxgenError, HoldoutLockedError, TreeError
@@ -26,9 +29,10 @@ from fxgen.ga.diversity import similarity_matrix
 from fxgen.ga.evolve import Evaluation, EvolutionResult, GenerationStats, evolve
 from fxgen.reporting.html_report import ReportData, render_report
 from fxgen.reporting.pine import export_pine
+from fxgen.reporting.portfolio_report import render_portfolio
 from fxgen.reporting.ranking import ranking_frame, write_ranking
 from fxgen.storage.db import Store
-from fxgen.tree.node import Tree, depth, n_internal
+from fxgen.tree.node import Tree, conditions_used, depth, n_internal
 from fxgen.tree.serialize import from_dict, to_dict, to_rules, tree_hash
 from fxgen.validation.battery import TrialContext, run_robustness
 from fxgen.validation.dsr import deflated_sharpe
@@ -170,6 +174,7 @@ def _run_stages(cfg: Config, store: Store, run_id: str, notify: Progress, stop: 
         tid = tree_hash(e.tree)
         report = run_robustness(e.tree, ws, cfg, context, e.fitness.value).to_dict()
         store.save_robustness(run_id, tid, report)
+        store.save_classification(run_id, tid, classify_stored(store, tid, run_id))
         for split, dsr in report["dsr"].items():
             store.set_dsr(run_id, tid, split, dsr["dsr"])
         if report["survives"]:
@@ -216,6 +221,33 @@ def run_holdout(store: Store, run_id: str, make_reports: bool = True) -> dict[st
             generate_report(store, tid, run_id)
             write_pine(store, tid, run_id)
     return summary
+
+
+def classify_stored(store: Store, tree_id: str, run_id: str | None = None) -> dict[str, Any]:
+    """Strategy type of a stored tree from its rules and its train + validation trades."""
+    run_id = run_id or store.run_of_tree(tree_id)
+    if run_id is None:
+        raise TreeError(f"tree {tree_id} is not attached to any run")
+    tree = from_dict(store.get_tree(tree_id)["tree_json"])
+    library = {c["id"]: Condition.from_dict(c) for c in store.condition_payloads(run_id)}
+    missing = [cid for cid in conditions_used(tree) if cid not in library]
+    if missing:
+        ws = get_workspace(run_config(store, run_id))
+        library.update({cid: ws.condition(cid) for cid in missing})
+    trades = store.get_trades(run_id, tree_id)
+    trades = trades[trades["split"].isin(["train", "validation"])]
+    return classify(tree, library, trades).to_dict()
+
+
+def build_and_report_portfolio(store: Store, run_ids: list[str] | None = None,
+                               settings: PortfolioConfig | None = None) -> dict[str, Any]:
+    """Build a decorrelated portfolio, save it and render its HTML report."""
+    portfolio = build_portfolio(store, run_ids, settings)
+    cfg = run_config(store, portfolio["runs"][0])
+    path = render_portfolio(portfolio, cfg.backtest.risk_per_trade_pct, cfg.validation.montecarlo.confidence,
+                            cfg.resolve(cfg.storage.output_dir) / "portfolios" / f"{portfolio['portfolio_id']}.html")
+    portfolio["report"] = str(path)
+    return portfolio
 
 
 def generate_report(store: Store, tree_id: str, run_id: str | None = None) -> Path:
