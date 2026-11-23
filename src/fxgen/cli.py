@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 from fxgen.config import DEFAULT_CONFIG_PATH, PROJECT_ROOT, load_config
@@ -83,6 +85,19 @@ def indicators_markdown() -> str:
     return "\n".join(lines) + "\n"
 
 
+def lse_download(args: argparse.Namespace, default_pairs: list[str]) -> dict[str, Any]:
+    from fxgen.data.lse import LseClient, download_universe, estimate_rows
+
+    client = LseClient(os.environ.get("LSE_API_KEY", ""))
+    today = pd.Timestamp.now(tz="UTC").normalize().tz_localize(None)
+    start = args.start or str((today - pd.DateOffset(years=10) + pd.Timedelta(days=2)).date())
+    end = args.end or str((today - pd.Timedelta(days=1)).date())
+    pairs = args.pairs or default_pairs
+    if args.estimate:
+        return {p: estimate_rows(client, p, start, end) for p in pairs}
+    return download_universe(client, pairs, start, end, args.out, args.years_per_chunk)
+
+
 def _print(data: Any) -> None:
     sys.stdout.write(json.dumps(data, indent=2, default=str) + "\n")
 
@@ -100,6 +115,14 @@ def main(argv: list[str] | None = None) -> int:
     synth.add_argument("--seed", type=int, default=42)
     synth.add_argument("--start", default="2015-01-04")
     synth.add_argument("--end", default="2025-01-01")
+
+    lse = sub.add_parser("lse-download", help="download forex H1 candles from London Strategic Edge (key in LSE_API_KEY)")
+    lse.add_argument("--pairs", nargs="*", help="pairs (default: data.pairs of the config)")
+    lse.add_argument("--start", default=None, help="first day (default: 10 years ago, the free plan window)")
+    lse.add_argument("--end", default=None, help="last day (default: yesterday)")
+    lse.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "lse")
+    lse.add_argument("--years-per-chunk", type=float, default=5.0)
+    lse.add_argument("--estimate", action="store_true", help="only print the rows each pair would read")
 
     sub.add_parser("datasets", help="list data files and their quality")
     sub.add_parser("evolve", help="evolve, validate and select finalists (no holdout)")
@@ -123,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         store = Store(cfg.resolve(cfg.storage.database))
         if args.command == "synth":
             write_universe(args.out, start=args.start, end=args.end, edge=args.edge, seed=args.seed)
+        elif args.command == "lse-download":
+            _print(lse_download(args, cfg.data.pairs))
         elif args.command == "datasets":
             _print(discover_datasets(cfg))
         elif args.command == "evolve":

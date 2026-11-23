@@ -40,6 +40,30 @@ et rien ne doit survivre à la validation (`tests/test_validation.py::test_nothi
 `config/demo.yaml` réduit les budgets pour aller vite. Pour un vrai travail, utilisez `config/default.yaml`
 (19 permutations, GA 200 × 30 : environ 1 h 15 estimée sur 4 cœurs pour 12 paires en H1 sur 10 ans).
 
+## Données réelles gratuites : London Strategic Edge
+
+[London Strategic Edge](https://londonstrategicedge.com/data) fournit gratuitement l'historique de 60 paires
+forex via une API, avec une clé gratuite (page Databank). fxgen sait le télécharger :
+
+```bash
+export LSE_API_KEY=ta_cle                       # ne la committe jamais
+uv run fxgen lse-download --estimate            # lignes que coûtera chaque paire (ne consomme pas de quota)
+uv run fxgen lse-download                       # 12 paires, 10 dernières années, H1 -> data/lse/
+uv run fxgen --config config/lse.yaml datasets  # contrôle qualité
+uv run fxgen --config config/lse.yaml evolve
+```
+
+- Seul le H1 est téléchargé ; H4 et D1 sont reconstruits localement (bascule journalière à 22 h UTC).
+- **Limites du plan gratuit** : un export lit au plus 2,5 M de lignes, et un an de H1 forex en lit environ
+  375 000, car les bougies sont construites à partir des barres 1 minute. Le quota est de 12,5 M de lignes par
+  jour, soit environ 3 paires × 10 ans par jour. Pour 12 paires, comptez donc environ 4 jours.
+- **Reprise** : quand le quota est épuisé, la commande s'arrête proprement. Relancez-la le lendemain : les
+  tranches déjà téléchargées (dans `data/lse/raw/`, vérifiées par SHA-256) ne sont pas redemandées.
+- **Fenêtre et splits** : la fenêtre gratuite est de 10 ans. `config/lse.yaml` garde donc la première année
+  comme période de chauffe des indicateurs : train 2018-2022, validation 2023-2024, holdout depuis 2025.
+- Les conditions d'utilisation du site autorisent l'accès automatisé uniquement via leur API. Elles
+  interdisent de partager la clé ou de redistribuer les données comme service concurrent.
+
 ## Brancher vos données
 
 Un fichier CSV par paire et par timeframe, nommé selon `data.file_pattern` (`{pair}_{timeframe}.csv` par
