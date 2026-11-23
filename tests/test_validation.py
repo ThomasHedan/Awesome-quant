@@ -8,6 +8,7 @@ import pytest
 
 from fxgen.config import Config, MonteCarloConfig, PropFirmConfig
 from fxgen.data.loader import load_universe
+from fxgen.data.splits import Period
 from fxgen.data.synthetic import write_universe
 from fxgen.errors import HoldoutLockedError
 from fxgen.ga.evolve import evolve
@@ -17,6 +18,7 @@ from fxgen.validation.dsr import deflated_sharpe, expected_max_sharpe
 from fxgen.validation.holdout import MemoryLedger, run_holdout_stage
 from fxgen.validation.montecarlo import run_monte_carlo
 from fxgen.validation.permutation import permute_bars, permute_universe, run_permutation_test
+from fxgen.validation.prop_firm import prop_firm_limits
 from fxgen.validation.sensitivity import run_sensitivity
 from fxgen.validation.walkforward import walkforward_process, walkforward_tree
 from fxgen.workspace import Workspace, build_workspace
@@ -55,6 +57,19 @@ def test_monte_carlo_is_seeded_and_consistent() -> None:
     assert a.max_dd_pct_at_conf == pytest.approx(a.max_dd_r_at_conf * 0.5)
     assert a.max_risk_pct_for_limit == pytest.approx(prop.max_total_drawdown_pct / a.max_dd_r_at_conf)
     assert run_monte_carlo(np.ones(20), 0.5, mc, prop, seed=1).max_dd_r_at_conf == 0
+
+
+def test_prop_firm_limits() -> None:
+    period = Period(pd.Timestamp("2020-01-01", tz="UTC"), pd.Timestamp("2020-03-01", tz="UTC"))
+    trades = pd.DataFrame({
+        "entry_time": pd.to_datetime(["2020-02-03 01:00", "2020-02-03 02:00", "2020-02-03 03:00"], utc=True),
+        "exit_time": pd.to_datetime(["2020-02-03 10:00", "2020-02-03 11:00", "2020-02-05 10:00"], utc=True),
+        "r_multiple": [-1.0, -1.0, 2.0],
+    })
+    res = prop_firm_limits(trades, period, PropFirmConfig(max_daily_loss_pct=5.0))
+    assert res.worst_day_r == -2.0 and res.max_concurrent == 3
+    assert res.max_risk_pct_daily == pytest.approx(2.5) and res.max_risk_pct_all_stopped == pytest.approx(5 / 3)
+    assert prop_firm_limits(trades.iloc[:0], period, PropFirmConfig()).max_risk_pct_daily == float("inf")
 
 
 def test_permute_bars_keeps_distribution_and_validity() -> None:
@@ -98,7 +113,8 @@ def test_sensitivity_and_walkforward(ws: Workspace, session_cfg: Config) -> None
 def test_battery_report(ws: Workspace, session_cfg: Config) -> None:
     report = run_robustness(_tree(ws), ws, session_cfg, TrialContext(n_trials=50), train_fitness=0.5)
     out = report.to_dict()
-    assert set(report.checks) == {"validation_positive", "dsr_train", "walkforward", "sensitivity", "montecarlo"}
+    assert set(report.checks) == {"validation_positive", "dsr_train", "walkforward", "sensitivity", "montecarlo", "daily_loss"}
+    assert out["prop_firm"]["max_concurrent"] >= 1
     assert set(out["dsr"]) == {"train", "validation"} and "survives" in out
 
 

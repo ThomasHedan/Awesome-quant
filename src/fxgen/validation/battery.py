@@ -14,6 +14,7 @@ from fxgen.tree.node import Tree
 from fxgen.validation.dsr import deflated_sharpe
 from fxgen.validation.montecarlo import run_monte_carlo
 from fxgen.validation.permutation import PermutationResult
+from fxgen.validation.prop_firm import prop_firm_limits
 from fxgen.validation.sensitivity import run_sensitivity
 from fxgen.validation.walkforward import walkforward_tree
 from fxgen.workspace import Workspace
@@ -34,6 +35,7 @@ class RobustnessReport:
     walkforward: dict[str, Any] = field(default_factory=dict)
     sensitivity: dict[str, Any] = field(default_factory=dict)
     montecarlo: dict[str, Any] = field(default_factory=dict)
+    prop_firm: dict[str, Any] = field(default_factory=dict)
     permutation: dict[str, Any] = field(default_factory=dict)
     checks: dict[str, bool] = field(default_factory=dict)
 
@@ -63,6 +65,8 @@ def run_robustness(tree: Tree, ws: Workspace, cfg: Config, context: TrialContext
     mc = run_monte_carlo(trades["r_multiple"].to_numpy() if len(trades) else np.array([]), risk,
                          cfg.validation.montecarlo, cfg.prop_firm, seed=cfg.seed)
     report.montecarlo = mc.to_dict()
+    prop = prop_firm_limits(trades, full, cfg.prop_firm)
+    report.prop_firm = prop.to_dict()
 
     if context.permutation is not None:
         perm = context.permutation
@@ -76,4 +80,5 @@ def run_robustness(tree: Tree, ws: Workspace, cfg: Config, context: TrialContext
     report.checks["walkforward"] = bool(report.walkforward["passed"])
     report.checks["sensitivity"] = bool(report.sensitivity["passed"])
     report.checks["montecarlo"] = mc.max_risk_pct_for_limit >= cfg.prop_firm.min_risk_per_trade_pct
+    report.checks["daily_loss"] = prop.max_risk_pct_daily >= cfg.prop_firm.min_risk_per_trade_pct
     return report

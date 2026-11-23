@@ -45,6 +45,16 @@ def max_drawdown(r_sequence: np.ndarray) -> float:
     return float(np.max(np.maximum.accumulate(equity) - equity))
 
 
+def max_concurrent_positions(trades: pd.DataFrame) -> int:
+    """Largest number of positions open at the same time across all pairs."""
+    if trades.empty:
+        return 0
+    times = np.concatenate([trades["entry_time"].to_numpy(), trades["exit_time"].to_numpy()])
+    steps = np.concatenate([np.ones(len(trades)), -np.ones(len(trades))])
+    order = np.lexsort((steps, times))
+    return int(np.max(np.cumsum(steps[order])))
+
+
 def compute_metrics(trades: pd.DataFrame, period: Period, risk_pct: float) -> dict[str, Any]:
     """Summary metrics of a trade list over ``period``."""
     years = max((period.end - period.start).days / 365.25, 1e-9)
@@ -53,7 +63,7 @@ def compute_metrics(trades: pd.DataFrame, period: Period, risk_pct: float) -> di
         return {
             "n_trades": 0, "trades_per_year": 0.0, "win_rate": 0.0, "profit_factor": 0.0, "expectancy_r": 0.0,
             "total_r": 0.0, "sharpe": 0.0, "max_dd_r": 0.0, "max_dd_pct": 0.0, "return_pct": 0.0,
-            "worst_day_pct": 0.0, "avg_bars_held": 0.0, "long_share": 0.0,
+            "worst_day_pct": 0.0, "avg_bars_held": 0.0, "long_share": 0.0, "max_concurrent": 0,
         }
     ordered = trades.sort_values("exit_time")
     r = ordered["r_multiple"].to_numpy()
@@ -74,6 +84,7 @@ def compute_metrics(trades: pd.DataFrame, period: Period, risk_pct: float) -> di
         "worst_day_pct": float(min(0.0, daily.min()) * risk_pct),
         "avg_bars_held": float(ordered["bars_held"].mean()),
         "long_share": float((ordered["direction"] > 0).mean()),
+        "max_concurrent": max_concurrent_positions(ordered),
     }
 
 

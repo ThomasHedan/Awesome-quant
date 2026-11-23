@@ -56,7 +56,7 @@ def build_pair_frame(
     exec_df = data.frames[execution_tf]
     has_volume = bool((exec_df["volume"] > 0).mean() > 0.5)
     feature_cols: list[pd.DataFrame] = []
-    state_cols: dict[str, pd.Series] = {}
+    state_cols: dict[str, np.ndarray] = {}
     for tf in [execution_tf, *context_tfs]:
         native = compute_features(data.frames[tf], features, has_volume)
         states: dict[str, pd.Series] = {}
@@ -75,13 +75,11 @@ def build_pair_frame(
             native = align_to_execution(native, tf, exec_df.index, execution_tf)
             state_frame = align_to_execution(state_frame, tf, exec_df.index, execution_tf)
         feature_cols.append(native.astype("float32"))
-        state_cols.update({c: state_frame[c] for c in state_frame.columns})
+        state_cols.update({c: state_frame[c].fillna(0.0).to_numpy() > 0.5 for c in state_frame.columns})
 
     decision_times = exec_df.index + duration(execution_tf)
     for rule in CALENDAR_RULES:
-        state_cols[f"{execution_tf}.cal:{rule.name}"] = pd.Series(
-            rule.evaluate(decision_times).astype("float32"), index=exec_df.index
-        )
+        state_cols[f"{execution_tf}.cal:{rule.name}"] = rule.evaluate(decision_times)
     atr_tf = atr_timeframe or execution_tf
     exit_atr = core.atr(data.frames[atr_tf], atr_period)
     if atr_tf != execution_tf:
@@ -115,7 +113,7 @@ def condition_column(frame: PairFrame, cond: Condition, mask: np.ndarray | None 
         values = frame.features[cond.column].to_numpy()
         out = evaluate_above(values, cond.threshold)
     else:
-        out = np.nan_to_num(frame.states[state_key(cond)].to_numpy(), nan=0.0) > 0.5
+        out = frame.states[state_key(cond)].to_numpy()
     return out if mask is None else out[mask]
 
 

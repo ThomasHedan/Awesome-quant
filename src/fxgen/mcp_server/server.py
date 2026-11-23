@@ -41,7 +41,7 @@ TreeId = Annotated[str, Field(min_length=4, max_length=32, pattern=r"^[0-9a-f]+$
 RunId = Annotated[str | None, Field(default=None, description="run id; latest finished run when omitted")]
 LOCKED_OVERRIDES = ("splits", "storage")
 SUMMARY_KEYS = ("n_trades", "trades_per_year", "sharpe", "profit_factor", "win_rate", "expectancy_r", "total_r",
-                "return_pct", "max_dd_pct", "worst_day_pct", "avg_bars_held")
+                "return_pct", "max_dd_pct", "worst_day_pct", "max_concurrent", "avg_bars_held")
 
 mcp = FastMCP(
     "fxgen",
@@ -243,6 +243,7 @@ def get_robustness(tree_id: TreeId, run_id: RunId = None) -> dict[str, Any]:
         "walkforward": _round(report["walkforward"]),
         "sensitivity": _round({k: report["sensitivity"][k] for k in ("base_sharpe", "worst_sharpe", "median_ratio", "worst_ratio", "passed")}),
         "montecarlo": _round(report["montecarlo"]),
+        "prop_firm": _round(report.get("prop_firm") or {}),
         "permutation": _round({k: perm.get(k) for k in ("real_best", "permuted_best", "p_value", "tree_p_value", "z_score")}) if perm else None,
         "run_walkforward_process": _round(_json(st.get_run(rid).get("walkforward_json"))),
     }

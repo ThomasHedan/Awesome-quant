@@ -110,6 +110,15 @@ details summary { cursor: pointer; color: var(--text-2); }
 {% for k, v in rb.montecarlo.items() %}<tr><td>{{ k }}</td><td>{{ v | fmt }}</td></tr>{% endfor %}
 </table></div>
 
+{% if rb.prop_firm %}
+<h2>Prop firm (train + validation)</h2>
+<div class="scroll"><table>
+<tr><th>measure</th><th>value</th></tr>
+{% for k, v in rb.prop_firm.items() %}<tr><td>{{ k }}</td><td>{{ v | fmt }}</td></tr>{% endfor %}
+</table></div>
+<p class="sub">Daily losses are realised at exit; max_risk_pct_all_stopped assumes every open position hits its stop the same day.</p>
+{% endif %}
+
 {% if rb.permutation %}
 <h2>Permutation test</h2>
 <p>Real best fitness {{ rb.permutation.real_best | fmt }}; tree train fitness {{ rb.train_fitness | fmt }};

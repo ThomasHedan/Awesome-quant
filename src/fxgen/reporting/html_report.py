@@ -124,7 +124,7 @@ def render_report(data: ReportData, out_path: Path) -> Path:
         charts.append(fig.to_html(full_html=False, include_plotlyjs=True if first else False, config={"displaylogo": False}))
         first = False
     metric_keys = ["n_trades", "trades_per_year", "sharpe", "profit_factor", "win_rate", "expectancy_r",
-                   "total_r", "return_pct", "max_dd_pct", "worst_day_pct", "avg_bars_held", "long_share"]
+                   "total_r", "return_pct", "max_dd_pct", "worst_day_pct", "max_concurrent", "avg_bars_held", "long_share"]
     pairs = sorted({p for split in data.per_pair.values() for p in split})
     html = env.get_template("report.html.j2").render(
         d=data,

@@ -38,7 +38,7 @@ Le jeu synthétique contient un **edge de momentum faible et volontaire** (`--ed
 et rien ne doit survivre à la validation (`tests/test_validation.py::test_nothing_survives_on_pure_noise`).
 
 `config/demo.yaml` réduit les budgets pour aller vite. Pour un vrai travail, utilisez `config/default.yaml`
-(19 permutations, GA 200 × 30).
+(19 permutations, GA 200 × 30 : environ 55 min sur 4 cœurs pour 12 paires en H1 sur 7 ans, ~2 Go de RAM).
 
 ## Brancher vos données
 
@@ -104,6 +104,9 @@ Toute clé peut être surchargée en ligne de commande : `uv run fxgen --set ga.
   - sensibilité (percentiles ±5, sorties ×0.8 / ×1.2, Sharpe ≥ 50 % de la base) ;
   - Monte Carlo sur l'ordre des trades (DD à 95 % compatible avec le DD max de la prop firm à au moins
     `min_risk_per_trade_pct` de risque) ;
+  - perte journalière : la pire journée réalisée doit rester sous `max_daily_loss_pct` au même risque. Le
+    rapport indique aussi le nombre max de positions simultanées et le risque compatible si toutes étaient
+    stoppées le même jour ;
   - permutation.
 - **Walk-forward du processus.** Le GA est relancé sur chaque fenêtre IS et son meilleur arbre est testé
   OOS. Le résultat (efficiency) est stocké avec le run.
@@ -221,6 +224,6 @@ src/fxgen/
 - Les coûts par défaut sont des ordres de grandeur pour un compte raw spread de prop firm. Calibrez-les sur
   votre broker.
 - La permutation coûte cher : 19 runs × (features + GA). Comptez environ 1 h avec la config par défaut sur
-  4 cœurs.
+  4 cœurs (mesuré : 53 min pour le run complet).
 - Les données synthétiques servent à tester la plomberie. Les performances obtenues dessus ne disent rien
   sur les marchés réels.
